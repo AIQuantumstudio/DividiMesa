@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="font-extrabold text-lg leading-none text-white tracking-tight">DividiMesa</h1>
+              <h1 className="font-extrabold text-lg leading-none text-white tracking-tight">Dividí Mesa</h1>
               {!isAdminMode ? (
                 <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
                   COMENSAL
@@ -41,13 +41,16 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+            <p className="text-[11px] text-emerald-400 font-semibold mt-0.5">
+              La forma fácil de dividir la cuenta entre amigos
+            </p>
+            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
               <Utensils className="w-3 h-3 text-emerald-400 shrink-0" />
               <span className="truncate max-w-[170px] sm:max-w-[260px]">{restaurantName}</span>
               <button
                 type="button"
                 onClick={onOpenQr}
-                className="ml-1 text-slate-400 hover:text-emerald-400 transition-colors p-0.5"
+                className="ml-1 text-slate-400 hover:text-emerald-400 transition-colors p-0.5 cursor-pointer"
                 title="Ver QR de la mesa"
               >
                 <QrCode className="w-3.5 h-3.5 inline" />

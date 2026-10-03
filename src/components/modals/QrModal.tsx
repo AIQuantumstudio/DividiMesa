@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
-import { QrCode, X, Copy, Check } from 'lucide-react';
-import { copyToClipboard } from '../../utils/format';
+import { QrCode, X } from 'lucide-react';
 
 interface QrModalProps {
   isOpen: boolean;
@@ -9,10 +8,9 @@ interface QrModalProps {
   onToast: (msg: string) => void;
 }
 
-export const QrModal: React.FC<QrModalProps> = ({ isOpen, onClose, onToast }) => {
+export const QrModal: React.FC<QrModalProps> = ({ isOpen, onClose }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [copied, setCopied] = React.useState(false);
-  const tableUrl = window.location.href.split('#')[0];
+  const tableUrl = 'https://dividimesa.netlify.app/';
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
@@ -35,15 +33,6 @@ export const QrModal: React.FC<QrModalProps> = ({ isOpen, onClose, onToast }) =>
   }, [isOpen, tableUrl]);
 
   if (!isOpen) return null;
-
-  const handleCopy = async () => {
-    const ok = await copyToClipboard(tableUrl);
-    if (ok) {
-      setCopied(true);
-      onToast('Enlace copiado');
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   return (
     <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -68,16 +57,9 @@ export const QrModal: React.FC<QrModalProps> = ({ isOpen, onClose, onToast }) =>
           <canvas ref={canvasRef} className="rounded-lg" />
         </div>
 
-        <div className="bg-slate-900/90 rounded-xl p-2.5 border border-slate-800 text-xs font-mono text-emerald-400 flex items-center justify-between">
-          <span className="truncate mr-2 text-[11px] text-left">{tableUrl}</span>
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="text-slate-300 hover:text-white px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 transition-colors flex items-center gap-1 cursor-pointer shrink-0"
-          >
-            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-            <span>Copiar</span>
-          </button>
+        <div className="bg-slate-900/80 rounded-xl p-2.5 border border-slate-800 text-xs text-slate-300 flex items-center justify-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="font-medium text-[11px] text-slate-300">Apuntá la cámara para abrir la mesa</span>
         </div>
 
         <button
