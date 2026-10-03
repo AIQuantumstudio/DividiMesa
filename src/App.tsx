@@ -18,7 +18,9 @@ import {
   ColorKey,
   ItemMode,
   TableTotals,
-  DinerTotals
+  DinerTotals,
+  User,
+  UserProduct
 } from './types';
 import { INITIAL_PRESETS } from './data/presets';
 import { playTapSound } from './utils/audio';
@@ -30,6 +32,7 @@ import {
   buildWhatsAppMessage
 } from './utils/format';
 import { hasConfiguredPin } from './utils/pin';
+import { authService, AuthResponse } from './services/auth';
 
 import { Header } from './components/Header';
 import { TopBar } from './components/TopBar';
@@ -46,10 +49,55 @@ import { AddDinerModal } from './components/modals/AddDinerModal';
 import { UserSwitchModal } from './components/modals/UserSwitchModal';
 import { ImportModal } from './components/modals/ImportModal';
 import { AskModal, AskModalState } from './components/modals/AskModal';
+import { LoginScreen } from './components/auth/LoginScreen';
+import { AccessDeniedScreen } from './components/auth/AccessDeniedScreen';
+import { AdminLicenseModal } from './components/auth/AdminLicenseModal';
+import { Loader2 } from 'lucide-react';
 
 const COLOR_KEYS: ColorKey[] = ['emerald', 'sky', 'amber', 'purple', 'rose'];
 
 export default function App() {
+  // Authentication & Product Licensing State
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLicense, setAuthLicense] = useState<UserProduct | null>(null);
+  const [adminLicenseModalOpen, setAdminLicenseModalOpen] = useState<boolean>(false);
+
+  const checkAuthSession = useCallback(async () => {
+    setAuthLoading(true);
+    try {
+      const data = await authService.getMe();
+      setAuthUser(data.user);
+      setAuthLicense(data.license);
+    } catch {
+      setAuthUser(null);
+      setAuthLicense(null);
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkAuthSession();
+  }, [checkAuthSession]);
+
+  const handleAuthSuccess = (authData: AuthResponse) => {
+    playTapSound();
+    setAuthUser(authData.user);
+    setAuthLicense(authData.license);
+    if (authData.license.status === 'active') {
+      showToast(`¡Bienvenido, ${authData.user.name}!`);
+    }
+  };
+
+  const handleLogout = async () => {
+    playTapSound();
+    await authService.logout();
+    setAuthUser(null);
+    setAuthLicense(null);
+    showToast('Sesión cerrada');
+  };
+
   // App State
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [adminUnlocked, setAdminUnlocked] = useState<boolean>(false);
@@ -625,6 +673,34 @@ export default function App() {
     showToast('Carta eliminada');
   };
 
+  // Auth & License Gates
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 selection:bg-emerald-500/30 selection:text-emerald-300">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 mb-3 shadow-xl shadow-emerald-500/20">
+          <Loader2 className="w-7 h-7 animate-spin text-slate-950" />
+        </div>
+        <h2 className="text-base font-black text-white">Dividí Mesa</h2>
+        <p className="text-xs text-emerald-400 font-semibold mt-0.5">Verificando autorización y licencia...</p>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return <LoginScreen onSuccess={handleAuthSuccess} />;
+  }
+
+  if (authLicense?.status !== 'active') {
+    return (
+      <AccessDeniedScreen
+        user={authUser}
+        license={authLicense || { id: '', user_id: authUser.id, product_id: 'prod_dividi_mesa', status: 'pending', activated_at: null }}
+        onRefresh={checkAuthSession}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 antialiased">
       {/* Header */}
@@ -632,6 +708,7 @@ export default function App() {
         isAdminMode={isAdminMode}
         restaurantName={restaurantName}
         currentDiner={currentDiner}
+        isSystemAdmin={authUser.email === 'admin@dividimesa.com' || authUser.email === 'aiquantumstudio@gmail.com'}
         onToggleMode={handleToggleSystemMode}
         onOpenUserModal={() => {
           playTapSound();
@@ -640,6 +717,11 @@ export default function App() {
         onOpenQr={() => {
           playTapSound();
           setQrModalOpen(true);
+        }}
+        onLogout={handleLogout}
+        onOpenAdminLicenses={() => {
+          playTapSound();
+          setAdminLicenseModalOpen(true);
         }}
       />
 
@@ -874,6 +956,12 @@ export default function App() {
       <AskModal
         state={askModalState}
         onClose={() => setAskModalState(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <AdminLicenseModal
+        isOpen={adminLicenseModalOpen}
+        onClose={() => setAdminLicenseModalOpen(false)}
+        onToast={showToast}
       />
 
       {/* Toast Notification */}

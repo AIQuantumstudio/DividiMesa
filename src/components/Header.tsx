@@ -1,23 +1,29 @@
 import React from 'react';
-import { Receipt, Utensils, QrCode, Lock, Unlock, ShieldAlert } from 'lucide-react';
+import { Receipt, Utensils, QrCode, Lock, Unlock, ShieldAlert, LogOut, ShieldCheck } from 'lucide-react';
 import { Diner, COLORS } from '../types';
 
 interface HeaderProps {
   isAdminMode: boolean;
   restaurantName: string;
   currentDiner: Diner | null;
+  isSystemAdmin?: boolean;
   onToggleMode: () => void;
   onOpenUserModal: () => void;
   onOpenQr: () => void;
+  onLogout?: () => void;
+  onOpenAdminLicenses?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   isAdminMode,
   restaurantName,
   currentDiner,
+  isSystemAdmin,
   onToggleMode,
   onOpenUserModal,
-  onOpenQr
+  onOpenQr,
+  onLogout,
+  onOpenAdminLicenses
 }) => {
   const activeColor = currentDiner ? COLORS[currentDiner.color] : null;
 
@@ -60,6 +66,18 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center space-x-1.5">
+          {isSystemAdmin && onOpenAdminLicenses && (
+            <button
+              type="button"
+              onClick={onOpenAdminLicenses}
+              className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 px-2 py-1.5 rounded-xl border border-emerald-500/40 text-xs font-bold active:scale-95 flex items-center gap-1 transition-all cursor-pointer"
+              title="Gestión de Licencias AI Quantum Studio"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Licencias</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onToggleMode}
@@ -94,6 +112,17 @@ export const Header: React.FC<HeaderProps> = ({
               {currentDiner ? currentDiner.name : 'Sin user'}
             </span>
           </button>
+
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="p-1.5 bg-slate-800/80 hover:bg-rose-950/80 text-slate-400 hover:text-rose-300 rounded-xl border border-slate-700 active:scale-95 transition-all cursor-pointer"
+              title="Cerrar sesión"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
     </header>

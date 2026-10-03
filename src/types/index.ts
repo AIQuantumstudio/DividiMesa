@@ -83,3 +83,51 @@ export interface DinerTotals {
   cover: number;
   grand: number;
 }
+
+export type LicenseStatus = 'pending' | 'active' | 'revoked';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+  status: 'active' | 'pending' | 'suspended';
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface UserProduct {
+  id: string;
+  user_id: string;
+  product_id: string;
+  status: LicenseStatus;
+  activated_at: string | null;
+}
+
+export interface AuthSession {
+  user: User;
+  license: UserProduct;
+  product: Product;
+  token: string;
+}
+
+export interface AdminNotification {
+  id: string;
+  type: 'USER_REGISTERED' | 'LOGIN_ATTEMPT_PENDING' | 'LOGIN_ATTEMPT_REVOKED';
+  user_name: string;
+  user_email: string;
+  product_name: string;
+  product_slug: string;
+  status: 'pending' | 'revoked';
+  recipient: string;
+  created_at: string;
+  read: boolean;
+  subject: string;
+  body: string;
+}
+
+
