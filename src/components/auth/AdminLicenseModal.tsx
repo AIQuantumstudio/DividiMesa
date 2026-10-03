@@ -275,7 +275,9 @@ export const AdminLicenseModal: React.FC<AdminLicenseModalProps> = ({
               </div>
             ) : (
               notifications.map(n => {
-                const isReg = n.type === 'USER_REGISTERED';
+                const isNewReg = n.type === 'NEW_USER_REGISTERED' || n.type === 'USER_REGISTERED';
+                const isActivated = n.type === 'LICENSE_ACTIVATED';
+                const isRevoked = n.type === 'LICENSE_REVOKED';
                 const isPendingAttempt = n.type === 'LOGIN_ATTEMPT_PENDING';
 
                 return (
@@ -289,10 +291,18 @@ export const AdminLicenseModal: React.FC<AdminLicenseModalProps> = ({
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5 font-bold">
-                          {isReg ? (
+                        <div className="flex items-center gap-1.5 font-bold flex-wrap">
+                          {isNewReg ? (
                             <span className="bg-emerald-500/20 text-emerald-400 text-[9px] px-1.5 py-0.5 rounded border border-emerald-500/30 flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3" /> NUEVO REGISTRO
+                            </span>
+                          ) : isActivated ? (
+                            <span className="bg-teal-500/20 text-teal-300 text-[9px] px-1.5 py-0.5 rounded border border-teal-500/30 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> LICENCIA ACTIVADA
+                            </span>
+                          ) : isRevoked ? (
+                            <span className="bg-rose-500/20 text-rose-400 text-[9px] px-1.5 py-0.5 rounded border border-rose-500/30 flex items-center gap-1">
+                              <Ban className="w-3 h-3" /> LICENCIA REVOCADA
                             </span>
                           ) : isPendingAttempt ? (
                             <span className="bg-amber-500/20 text-amber-400 text-[9px] px-1.5 py-0.5 rounded border border-amber-500/30 flex items-center gap-1">
@@ -303,6 +313,9 @@ export const AdminLicenseModal: React.FC<AdminLicenseModalProps> = ({
                               <Ban className="w-3 h-3" /> INTENTO REVOCADO
                             </span>
                           )}
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                            {n.type}
+                          </span>
                           <span className="text-[10px] font-mono text-slate-400">
                             {new Date(n.created_at).toLocaleString('es-AR', {
                               dateStyle: 'short',
@@ -311,18 +324,25 @@ export const AdminLicenseModal: React.FC<AdminLicenseModalProps> = ({
                           </span>
                         </div>
                         <h4 className="font-bold text-slate-100 text-xs mt-1">{n.subject}</h4>
+                        <div className="flex items-center gap-3 text-[10px] text-slate-400 font-mono pt-0.5">
+                          <span>Usuario: <strong className="text-slate-200">{n.user_name}</strong></span>
+                          <span>Email: <strong className="text-slate-200">{n.user_email}</strong></span>
+                          <span>Producto: <strong className="text-emerald-400">{n.product_name}</strong></span>
+                        </div>
                       </div>
 
-                      {!n.read && (
+                      {!n.read ? (
                         <button
                           type="button"
                           onClick={() => handleMarkAsRead(n.id)}
-                          className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-700 flex items-center gap-1 cursor-pointer shrink-0"
+                          className="text-[10px] bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 px-2 py-0.5 rounded border border-slate-700 flex items-center gap-1 cursor-pointer shrink-0"
                           title="Marcar como leída"
                         >
                           <Check className="w-3 h-3" />
-                          <span>Leída</span>
+                          <span>Marcar leída</span>
                         </button>
+                      ) : (
+                        <span className="text-[9px] text-slate-500 font-mono shrink-0">Leída</span>
                       )}
                     </div>
 

@@ -119,12 +119,12 @@ export interface AuthSession {
 
 export interface AdminNotification {
   id: string;
-  type: 'USER_REGISTERED' | 'LOGIN_ATTEMPT_PENDING' | 'LOGIN_ATTEMPT_REVOKED';
+  type: 'NEW_USER_REGISTERED' | 'LICENSE_ACTIVATED' | 'LICENSE_REVOKED' | 'USER_REGISTERED' | 'LOGIN_ATTEMPT_PENDING' | 'LOGIN_ATTEMPT_REVOKED';
   user_name: string;
   user_email: string;
   product_name: string;
   product_slug: string;
-  status: 'pending' | 'revoked';
+  status: 'pending' | 'active' | 'revoked';
   recipient: string;
   created_at: string;
   read: boolean;

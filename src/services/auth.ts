@@ -193,7 +193,13 @@ async function tryServerRequest<T>(endpoint: string, options: RequestInit = {}):
     }
     return data as T;
   } catch (err: any) {
-    if (err.name === 'AbortError' || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+    if (
+      err.name === 'AbortError' ||
+      err.code === 'ERR_INVALID_URL' ||
+      err.message?.includes('Failed to fetch') ||
+      err.message?.includes('NetworkError') ||
+      err.message?.includes('URL')
+    ) {
       return null;
     }
     // If it was a real business error from a working server (e.g. "Credenciales incorrectas")
@@ -353,9 +359,27 @@ export const authService = {
 
     db.users.push(newUser);
 
+    const dateFormatted = new Date().toLocaleString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const subject = `NUEVA SOLICITUD DE ACCESO — DIVIDÍ MESA (${cleanName})`;
+    const body = `NUEVA SOLICITUD DE ACCESO — DIVIDÍ MESA\n\n` +
+      `Nombre:\n${cleanName}\n\n` +
+      `Email:\n${cleanEmail}\n\n` +
+      `Producto:\nDividí Mesa\n\n` +
+      `Estado:\nPendiente\n\n` +
+      `Fecha:\n${dateFormatted}\n\n` +
+      `ID de Usuario:\n${newUserId}\n\n` +
+      `El usuario está esperando aprobación.`;
+
     const notif: AdminNotification = {
-      id: `notif_${Date.now()}`,
-      type: 'USER_REGISTERED',
+      id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      type: 'NEW_USER_REGISTERED',
       user_name: cleanName,
       user_email: cleanEmail,
       product_name: 'Dividí Mesa',
@@ -364,8 +388,8 @@ export const authService = {
       recipient: PRIMARY_ADMIN_EMAIL,
       created_at: now,
       read: false,
-      subject: `[AI Quantum Studio] Nueva solicitud de acceso - ${cleanName}`,
-      body: `Nuevo registro para Dividí Mesa: ${cleanName} (${cleanEmail}). Estado: PENDING.`
+      subject,
+      body
     };
     db.notifications.unshift(notif);
     saveClientDb(db);
@@ -565,6 +589,26 @@ export const authService = {
       targetUser.activated_at = new Date().toISOString();
     } else if (newStatus === 'revoked') {
       targetUser.activated_at = null;
+    }
+
+    if (newStatus === 'active' || newStatus === 'revoked') {
+      const actionType = newStatus === 'active' ? 'LICENSE_ACTIVATED' : 'LICENSE_REVOKED';
+      const actionLabel = newStatus === 'active' ? 'Activada' : 'Revocada';
+      const auditNotif: AdminNotification = {
+        id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        type: actionType,
+        user_name: targetUser.name,
+        user_email: targetUser.email,
+        product_name: defaultProduct.name,
+        product_slug: defaultProduct.slug,
+        status: newStatus,
+        recipient: PRIMARY_ADMIN_EMAIL,
+        created_at: new Date().toISOString(),
+        read: false,
+        subject: `[Licencia ${actionLabel}] ${targetUser.name} (${defaultProduct.name})`,
+        body: `La licencia del producto ${defaultProduct.name} para el usuario ${targetUser.name} (${targetUser.email}) fue cambiada a estado ${newStatus.toUpperCase()}.`
+      };
+      db.notifications.unshift(auditNotif);
     }
     saveClientDb(db);
 
