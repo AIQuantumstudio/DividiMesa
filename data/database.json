@@ -5,7 +5,7 @@
       "name": "AI Quantum Studio (Admin)",
       "email": "aiquantumstudio@gmail.com",
       "password_hash": "dbd0819ad6d8db449e8f622b460aa99eb62f7234c970148c7b4ac24ec9418c89",
-      "created_at": "2026-10-03T19:14:39.523Z",
+      "created_at": "2026-10-03T19:20:55.655Z",
       "status": "active",
       "role": "admin",
       "is_demo": false
@@ -15,7 +15,7 @@
       "name": "Demostración AI Quantum Studio",
       "email": "demo@aiquantumstudio.com",
       "password_hash": "6774ee0522a86ea2eb954234354d26654aab62c6bb7abc6664f2f71317dec8dd",
-      "created_at": "2026-10-03T19:14:39.524Z",
+      "created_at": "2026-10-03T19:20:55.655Z",
       "status": "active",
       "role": "demo",
       "is_demo": true
@@ -25,7 +25,7 @@
       "name": "Cliente Activo (Ejemplo)",
       "email": "cliente.activo@ejemplo.com",
       "password_hash": "0dbc3248068e2e2de8471fe09e9bf6efd06a4e951a03e32ef7fc95f90ecbb4b1",
-      "created_at": "2026-10-03T19:14:39.524Z",
+      "created_at": "2026-10-03T19:20:55.655Z",
       "status": "active",
       "role": "user",
       "is_demo": false
@@ -35,7 +35,7 @@
       "name": "Cliente Pendiente (Ejemplo)",
       "email": "cliente.pendiente@ejemplo.com",
       "password_hash": "0dbc3248068e2e2de8471fe09e9bf6efd06a4e951a03e32ef7fc95f90ecbb4b1",
-      "created_at": "2026-10-03T19:14:39.524Z",
+      "created_at": "2026-10-03T19:20:55.655Z",
       "status": "active",
       "role": "user",
       "is_demo": false
@@ -45,17 +45,27 @@
       "name": "Cliente Revocado (Ejemplo)",
       "email": "cliente.revocado@ejemplo.com",
       "password_hash": "0dbc3248068e2e2de8471fe09e9bf6efd06a4e951a03e32ef7fc95f90ecbb4b1",
-      "created_at": "2026-10-03T19:14:39.524Z",
+      "created_at": "2026-10-03T19:20:55.655Z",
       "status": "active",
       "role": "user",
       "is_demo": false
     },
     {
-      "id": "usr_1791055084408_j4rr",
-      "name": "vilmar",
-      "email": "birdsfreemusic@gmail.com",
+      "id": "usr_1791055340599_xaxm",
+      "name": "vilmar valeria olivera",
+      "email": "aquantumstudio@gmail.com",
       "password_hash": "679af2ca8009283017f6451d836063223d951769c8ad2d0693011f3bb2e7b5b6",
-      "created_at": "2026-10-03T19:18:04.408Z",
+      "created_at": "2026-10-03T19:22:20.599Z",
+      "status": "active",
+      "role": "user",
+      "is_demo": false
+    },
+    {
+      "id": "usr_1791056285975_50wj",
+      "name": "Cliente Netlify Test",
+      "email": "nuevo_1791056285975@cliente.com",
+      "password_hash": "88f675d830ff8f6aade96440c2462631d08c7909eed84deceaf51a103a3993e9",
+      "created_at": "2026-10-03T19:38:05.975Z",
       "status": "active",
       "role": "user",
       "is_demo": false
@@ -74,21 +84,21 @@
       "user_id": "usr_admin_quantum",
       "product_id": "prod_dividi_mesa",
       "status": "active",
-      "activated_at": "2026-10-03T19:14:39.524Z"
+      "activated_at": "2026-10-03T19:20:55.655Z"
     },
     {
       "id": "lic_demo",
       "user_id": "usr_demo_quantum",
       "product_id": "prod_dividi_mesa",
       "status": "active",
-      "activated_at": "2026-10-03T19:14:39.524Z"
+      "activated_at": "2026-10-03T19:20:55.655Z"
     },
     {
       "id": "lic_cliente_activo",
       "user_id": "usr_cliente_activo",
       "product_id": "prod_dividi_mesa",
       "status": "active",
-      "activated_at": "2026-10-03T19:14:39.524Z"
+      "activated_at": "2026-10-03T19:20:55.655Z"
     },
     {
       "id": "lic_cliente_pendiente",
@@ -105,41 +115,62 @@
       "activated_at": null
     },
     {
-      "id": "lic_1791055084408",
-      "user_id": "usr_1791055084408_j4rr",
+      "id": "lic_1791055340599",
+      "user_id": "usr_1791055340599_xaxm",
       "product_id": "prod_dividi_mesa",
       "status": "pending",
       "activated_at": null
+    },
+    {
+      "id": "lic_1791056285976",
+      "user_id": "usr_1791056285975_50wj",
+      "product_id": "prod_dividi_mesa",
+      "status": "active",
+      "activated_at": "2026-10-03T19:38:05.996Z"
     }
   ],
   "notifications": [
     {
-      "id": "notif_1791055084409_le78",
-      "type": "USER_REGISTERED",
-      "user_name": "vilmar",
-      "user_email": "birdsfreemusic@gmail.com",
+      "id": "notif_1791056285994_2uto",
+      "type": "LOGIN_ATTEMPT_PENDING",
+      "user_name": "Cliente Netlify Test",
+      "user_email": "nuevo_1791056285975@cliente.com",
       "product_name": "Dividí Mesa",
       "product_slug": "dividi-mesa",
       "status": "pending",
       "recipient": "aiquantumstudio@gmail.com",
-      "created_at": "2026-10-03T19:18:04.409Z",
+      "created_at": "2026-10-03T19:38:05.994Z",
       "read": false,
-      "subject": "[AI Quantum Studio] Nueva solicitud de acceso - vilmar (Dividí Mesa)",
-      "body": "Se ha registrado un nuevo usuario para utilizar Dividí Mesa:\n\n• Nombre: vilmar\n• Email: birdsfreemusic@gmail.com\n• Fecha y hora: 3/10/26, 4:18:04 p. m.\n• Producto solicitado: Dividí Mesa (slug: dividi-mesa)\n• Estado actual: PENDING (Acceso NO otorgado hasta aprobación manual)\n\nPodés aprobar o gestionar este acceso desde el panel de Licencias de la aplicación."
+      "subject": "[Alerta de Acceso] Intento de login con licencia PENDIENTE - Cliente Netlify Test",
+      "body": "Un usuario registrado intentó iniciar sesión pero su licencia aún no fue activada:\n\n• Nombre: Cliente Netlify Test\n• Email: nuevo_1791056285975@cliente.com\n• Fecha y hora: 3/10/26, 4:38:05 p. m.\n• Producto: Dividí Mesa\n• Estado actual: PENDING (El usuario fue retenido en pantalla de activación pendiente)."
     },
     {
-      "id": "notif_1791055027064_shh8",
-      "type": "LOGIN_ATTEMPT_REVOKED",
-      "user_name": "Cliente Revocado (Ejemplo)",
-      "user_email": "cliente.revocado@ejemplo.com",
+      "id": "notif_1791056285992_5vj1",
+      "type": "USER_REGISTERED",
+      "user_name": "Cliente Netlify Test",
+      "user_email": "nuevo_1791056285975@cliente.com",
       "product_name": "Dividí Mesa",
       "product_slug": "dividi-mesa",
-      "status": "revoked",
+      "status": "pending",
       "recipient": "aiquantumstudio@gmail.com",
-      "created_at": "2026-10-03T19:17:07.064Z",
+      "created_at": "2026-10-03T19:38:05.992Z",
       "read": false,
-      "subject": "[Alerta de Seguridad] Intento de login con licencia REVOCADA - Cliente Revocado (Ejemplo)",
-      "body": "Un usuario con licencia revocada intentó ingresar al sistema:\n\n• Nombre: Cliente Revocado (Ejemplo)\n• Email: cliente.revocado@ejemplo.com\n• Fecha y hora: 3/10/26, 4:17:07 p. m.\n• Producto: Dividí Mesa\n• Estado actual: REVOKED (Acceso denegado)."
+      "subject": "[AI Quantum Studio] Nueva solicitud de acceso - Cliente Netlify Test (Dividí Mesa)",
+      "body": "Se ha registrado un nuevo usuario para utilizar Dividí Mesa:\n\n• Nombre: Cliente Netlify Test\n• Email: nuevo_1791056285975@cliente.com\n• Fecha y hora: 3/10/26, 4:38:05 p. m.\n• Producto solicitado: Dividí Mesa (slug: dividi-mesa)\n• Estado actual: PENDING (Acceso NO otorgado hasta aprobación manual)\n\nPodés aprobar o gestionar este acceso desde el panel de Licencias de la aplicación."
+    },
+    {
+      "id": "notif_1791055340617_a7sf",
+      "type": "USER_REGISTERED",
+      "user_name": "vilmar valeria olivera",
+      "user_email": "aquantumstudio@gmail.com",
+      "product_name": "Dividí Mesa",
+      "product_slug": "dividi-mesa",
+      "status": "pending",
+      "recipient": "aiquantumstudio@gmail.com",
+      "created_at": "2026-10-03T19:22:20.617Z",
+      "read": false,
+      "subject": "[AI Quantum Studio] Nueva solicitud de acceso - vilmar valeria olivera (Dividí Mesa)",
+      "body": "Se ha registrado un nuevo usuario para utilizar Dividí Mesa:\n\n• Nombre: vilmar valeria olivera\n• Email: aquantumstudio@gmail.com\n• Fecha y hora: 3/10/26, 4:22:20 p. m.\n• Producto solicitado: Dividí Mesa (slug: dividi-mesa)\n• Estado actual: PENDING (Acceso NO otorgado hasta aprobación manual)\n\nPodés aprobar o gestionar este acceso desde el panel de Licencias de la aplicación."
     }
   ]
 }

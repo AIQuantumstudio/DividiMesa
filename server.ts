@@ -5,6 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { getStore } from '@netlify/blobs';
 
 dotenv.config();
 
@@ -20,7 +21,7 @@ const PRIMARY_ADMIN_EMAIL = 'aiquantumstudio@gmail.com';
 const DEMO_EMAIL = 'demo@aiquantumstudio.com';
 
 // -------------------------------------------------------------
-// Database Interfaces & Persistence
+// Database Interfaces
 // -------------------------------------------------------------
 interface DbUser {
   id: string;
@@ -97,6 +98,195 @@ function verifyToken(token: string): string | null {
 }
 
 // -------------------------------------------------------------
+// Unified Persistent Storage (Netlify Blobs in Prod + Local JSON in Dev)
+// -------------------------------------------------------------
+function getInitialSeed(): DatabaseSchema {
+  return {
+    users: [
+      {
+        id: 'usr_admin_quantum',
+        name: 'AI Quantum Studio (Admin)',
+        email: PRIMARY_ADMIN_EMAIL,
+        password_hash: hashPassword('admin123'),
+        created_at: new Date().toISOString(),
+        status: 'active',
+        role: 'admin',
+        is_demo: false
+      },
+      {
+        id: 'usr_demo_quantum',
+        name: 'Demostración AI Quantum Studio',
+        email: DEMO_EMAIL,
+        password_hash: hashPassword('quantum_demo_secret_2026!'),
+        created_at: new Date().toISOString(),
+        status: 'active',
+        role: 'demo',
+        is_demo: true
+      },
+      {
+        id: 'usr_cliente_activo',
+        name: 'Cliente Activo (Ejemplo)',
+        email: 'cliente.activo@ejemplo.com',
+        password_hash: hashPassword('demo123'),
+        created_at: new Date().toISOString(),
+        status: 'active',
+        role: 'user',
+        is_demo: false
+      },
+      {
+        id: 'usr_cliente_pendiente',
+        name: 'Cliente Pendiente (Ejemplo)',
+        email: 'cliente.pendiente@ejemplo.com',
+        password_hash: hashPassword('demo123'),
+        created_at: new Date().toISOString(),
+        status: 'active',
+        role: 'user',
+        is_demo: false
+      },
+      {
+        id: 'usr_cliente_revocado',
+        name: 'Cliente Revocado (Ejemplo)',
+        email: 'cliente.revocado@ejemplo.com',
+        password_hash: hashPassword('demo123'),
+        created_at: new Date().toISOString(),
+        status: 'active',
+        role: 'user',
+        is_demo: false
+      }
+    ],
+    products: [
+      {
+        id: 'prod_dividi_mesa',
+        name: 'Dividí Mesa',
+        slug: 'dividi-mesa'
+      }
+    ],
+    user_products: [
+      {
+        id: 'lic_admin',
+        user_id: 'usr_admin_quantum',
+        product_id: 'prod_dividi_mesa',
+        status: 'active',
+        activated_at: new Date().toISOString()
+      },
+      {
+        id: 'lic_demo',
+        user_id: 'usr_demo_quantum',
+        product_id: 'prod_dividi_mesa',
+        status: 'active',
+        activated_at: new Date().toISOString()
+      },
+      {
+        id: 'lic_cliente_activo',
+        user_id: 'usr_cliente_activo',
+        product_id: 'prod_dividi_mesa',
+        status: 'active',
+        activated_at: new Date().toISOString()
+      },
+      {
+        id: 'lic_cliente_pendiente',
+        user_id: 'usr_cliente_pendiente',
+        product_id: 'prod_dividi_mesa',
+        status: 'pending',
+        activated_at: null
+      },
+      {
+        id: 'lic_cliente_revocado',
+        user_id: 'usr_cliente_revocado',
+        product_id: 'prod_dividi_mesa',
+        status: 'revoked',
+        activated_at: null
+      }
+    ],
+    notifications: []
+  };
+}
+
+let inMemoryDbCache: DatabaseSchema | null = null;
+
+function isNetlify(): boolean {
+  return Boolean(
+    process.env.NETLIFY ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.NETLIFY_BLOBS_CONTEXT
+  );
+}
+
+async function getDatabase(): Promise<DatabaseSchema> {
+  // 1. Try Netlify Blobs when running in Netlify
+  if (isNetlify()) {
+    try {
+      const store = getStore('dividi-mesa-data');
+      const data = await store.get('database', { type: 'json' });
+      if (data && typeof data === 'object' && Array.isArray((data as any).users)) {
+        inMemoryDbCache = data as DatabaseSchema;
+        return inMemoryDbCache;
+      } else {
+        const seed = getInitialSeed();
+        await store.setJSON('database', seed);
+        inMemoryDbCache = seed;
+        return inMemoryDbCache;
+      }
+    } catch (err) {
+      console.warn('Netlify Blobs read error (falling back to memory/local):', err);
+    }
+  }
+
+  // 2. Local File / Memory persistence
+  if (inMemoryDbCache) {
+    return inMemoryDbCache;
+  }
+
+  try {
+    if (fs.existsSync(DB_PATH)) {
+      const content = fs.readFileSync(DB_PATH, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (parsed && Array.isArray(parsed.users)) {
+        inMemoryDbCache = parsed as DatabaseSchema;
+        return inMemoryDbCache;
+      }
+    }
+  } catch (err) {
+    console.warn('Local database read failed:', err);
+  }
+
+  const seed = getInitialSeed();
+  inMemoryDbCache = seed;
+  try {
+    const dataDir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(DB_PATH, JSON.stringify(seed, null, 2), 'utf-8');
+  } catch {
+    // Ignore read-only filesystem errors in lambda
+  }
+  return seed;
+}
+
+async function saveDatabase(data: DatabaseSchema): Promise<void> {
+  inMemoryDbCache = data;
+
+  // 1. Persist to Netlify Blobs if in Netlify
+  if (isNetlify()) {
+    try {
+      const store = getStore('dividi-mesa-data');
+      await store.setJSON('database', data);
+      return;
+    } catch (err) {
+      console.warn('Netlify Blobs write error:', err);
+    }
+  }
+
+  // 2. Persist to local disk if accessible
+  try {
+    const dataDir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  } catch {
+    // Fail silently in read-only filesystems (e.g. AWS Lambda without Blobs configured)
+  }
+}
+
+// -------------------------------------------------------------
 // Anti-Spam & Administrative Notifications Dispatcher
 // -------------------------------------------------------------
 const lastNotificationMap: Record<string, number> = {};
@@ -106,13 +296,11 @@ function shouldSendNotification(email: string, type: string): boolean {
   const now = Date.now();
   const lastTime = lastNotificationMap[key] || 0;
 
-  // New registrations are always notified
   if (type === 'USER_REGISTERED') {
     lastNotificationMap[key] = now;
     return true;
   }
 
-  // 1 hour cooldown (3600000 ms) to avoid spam on repeated non-active login attempts
   if (now - lastTime < 3600000) {
     return false;
   }
@@ -121,17 +309,16 @@ function shouldSendNotification(email: string, type: string): boolean {
   return true;
 }
 
-function recordAndDispatchNotification(payload: {
+async function recordAndDispatchNotification(payload: {
   type: 'USER_REGISTERED' | 'LOGIN_ATTEMPT_PENDING' | 'LOGIN_ATTEMPT_REVOKED';
   userName: string;
   userEmail: string;
   productName: string;
   productSlug: string;
   status: 'pending' | 'revoked';
-}): DbAdminNotification | null {
+}): Promise<DbAdminNotification | null> {
   const canSend = shouldSendNotification(payload.userEmail, payload.type);
   if (!canSend) {
-    console.log(`[Anti-Spam] Notificación suprimida por cooldown reciente: ${payload.userEmail} (${payload.type})`);
     return null;
   }
 
@@ -186,156 +373,41 @@ function recordAndDispatchNotification(payload: {
     body
   };
 
+  const db = await getDatabase();
   db.notifications = db.notifications || [];
   db.notifications.unshift(notification);
-  saveDatabase();
-
-  console.log(`\n============================================================`);
-  console.log(`📧 NOTIFICACIÓN ADMINISTRATIVA DESPACHADA`);
-  console.log(`Para: ${PRIMARY_ADMIN_EMAIL}`);
-  console.log(`Asunto: ${subject}`);
-  console.log(`Cuerpo:\n${body}`);
-  console.log(`============================================================\n`);
+  await saveDatabase(db);
 
   return notification;
 }
 
 // -------------------------------------------------------------
-// Database Initialization & Seed
-// -------------------------------------------------------------
-function initDatabase(): DatabaseSchema {
-  const dataDir = path.join(__dirname, 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-
-  const initialProduct: DbProduct = {
-    id: 'prod_dividi_mesa',
-    name: 'Dividí Mesa',
-    slug: 'dividi-mesa'
-  };
-
-  // Pre-configured accounts for testing and production
-  const initialUsers: DbUser[] = [
-    {
-      id: 'usr_admin_quantum',
-      name: 'AI Quantum Studio (Admin)',
-      email: PRIMARY_ADMIN_EMAIL,
-      password_hash: hashPassword('admin123'),
-      created_at: new Date().toISOString(),
-      status: 'active',
-      role: 'admin',
-      is_demo: false
-    },
-    {
-      id: 'usr_demo_quantum',
-      name: 'Demostración AI Quantum Studio',
-      email: DEMO_EMAIL,
-      password_hash: hashPassword('quantum_demo_secret_2026!'),
-      created_at: new Date().toISOString(),
-      status: 'active',
-      role: 'demo',
-      is_demo: true
-    },
-    {
-      id: 'usr_cliente_activo',
-      name: 'Cliente Activo (Ejemplo)',
-      email: 'cliente.activo@ejemplo.com',
-      password_hash: hashPassword('demo123'),
-      created_at: new Date().toISOString(),
-      status: 'active',
-      role: 'user',
-      is_demo: false
-    },
-    {
-      id: 'usr_cliente_pendiente',
-      name: 'Cliente Pendiente (Ejemplo)',
-      email: 'cliente.pendiente@ejemplo.com',
-      password_hash: hashPassword('demo123'),
-      created_at: new Date().toISOString(),
-      status: 'active',
-      role: 'user',
-      is_demo: false
-    },
-    {
-      id: 'usr_cliente_revocado',
-      name: 'Cliente Revocado (Ejemplo)',
-      email: 'cliente.revocado@ejemplo.com',
-      password_hash: hashPassword('demo123'),
-      created_at: new Date().toISOString(),
-      status: 'active',
-      role: 'user',
-      is_demo: false
-    }
-  ];
-
-  const initialLicenses: DbUserProduct[] = [
-    {
-      id: 'lic_admin',
-      user_id: 'usr_admin_quantum',
-      product_id: 'prod_dividi_mesa',
-      status: 'active',
-      activated_at: new Date().toISOString()
-    },
-    {
-      id: 'lic_demo',
-      user_id: 'usr_demo_quantum',
-      product_id: 'prod_dividi_mesa',
-      status: 'active',
-      activated_at: new Date().toISOString()
-    },
-    {
-      id: 'lic_cliente_activo',
-      user_id: 'usr_cliente_activo',
-      product_id: 'prod_dividi_mesa',
-      status: 'active',
-      activated_at: new Date().toISOString()
-    },
-    {
-      id: 'lic_cliente_pendiente',
-      user_id: 'usr_cliente_pendiente',
-      product_id: 'prod_dividi_mesa',
-      status: 'pending',
-      activated_at: null
-    },
-    {
-      id: 'lic_cliente_revocado',
-      user_id: 'usr_cliente_revocado',
-      product_id: 'prod_dividi_mesa',
-      status: 'revoked',
-      activated_at: null
-    }
-  ];
-
-  const dbData: DatabaseSchema = {
-    users: initialUsers,
-    products: [initialProduct],
-    user_products: initialLicenses,
-    notifications: []
-  };
-
-  fs.writeFileSync(DB_PATH, JSON.stringify(dbData, null, 2), 'utf-8');
-  return dbData;
-}
-
-let db = initDatabase();
-
-function saveDatabase() {
-  try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Failed to save database:', err);
-  }
-}
-
-// -------------------------------------------------------------
-// Express App & Middleware
+// Express App & Middleware Configuration
 // -------------------------------------------------------------
 const app = express();
 app.use(express.json());
 
+// 1. Path Normalizer for Netlify Functions & Direct Routing
+app.use((req, _res, next) => {
+  if (req.url.startsWith('/.netlify/functions/api')) {
+    req.url = req.url.replace('/.netlify/functions/api', '/api');
+  }
+  next();
+});
+
+// 2. Universal CORS headers (protects against iframe/cross-domain issues)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Auth helper middleware
-function authenticate(req: Request, res: Response, next: NextFunction) {
+async function authenticate(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autorizado: sesión requerida' });
@@ -347,6 +419,7 @@ function authenticate(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: 'Sesión inválida o expirada' });
   }
 
+  const db = await getDatabase();
   const user = db.users.find(u => u.id === userId);
   if (!user) {
     return res.status(401).json({ error: 'Usuario no encontrado' });
@@ -374,7 +447,8 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
 // -------------------------------------------------------------
 
 // 1. DEMO LOGIN (One-click controlled demo without revealing credentials)
-app.post('/api/auth/demo', (_req: Request, res: Response) => {
+app.post('/api/auth/demo', async (_req: Request, res: Response) => {
+  const db = await getDatabase();
   const demoUser = db.users.find(u => u.email.toLowerCase() === DEMO_EMAIL.toLowerCase());
   if (!demoUser) {
     return res.status(500).json({ error: 'Cuenta demo no disponible' });
@@ -415,7 +489,7 @@ app.post('/api/auth/demo', (_req: Request, res: Response) => {
 });
 
 // 2. STANDARD LOGIN
-app.post('/api/auth/login', (req: Request, res: Response) => {
+app.post('/api/auth/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -423,6 +497,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
   }
 
   const normalizedEmail = String(email).trim().toLowerCase();
+  const db = await getDatabase();
   const user = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
 
   if (!user || user.password_hash !== hashPassword(password)) {
@@ -489,7 +564,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 });
 
 // 3. REGISTER (Real clients register with status: 'pending')
-app.post('/api/auth/register', (req: Request, res: Response) => {
+app.post('/api/auth/register', async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
   if (!name || !email || !password) {
@@ -497,6 +572,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
   }
 
   const normalizedEmail = String(email).trim().toLowerCase();
+  const db = await getDatabase();
 
   const existing = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
   if (existing) {
@@ -522,7 +598,6 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     slug: 'dividi-mesa'
   };
 
-  // Crucial Rule: Registration gives status = 'pending' (NOT active!)
   const newLicense: DbUserProduct = {
     id: `lic_${Date.now()}`,
     user_id: newUser.id,
@@ -532,7 +607,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
   };
 
   db.user_products.push(newLicense);
-  saveDatabase();
+  await saveDatabase(db);
 
   // Send Administrative Notification to aiquantumstudio@gmail.com
   recordAndDispatchNotification({
@@ -566,8 +641,9 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
 });
 
 // 4. ME (SESSION & ACCESS VERIFICATION)
-app.get('/api/auth/me', authenticate, (req: Request, res: Response) => {
+app.get('/api/auth/me', authenticate, async (req: Request, res: Response) => {
   const user = (req as any).user as DbUser;
+  const db = await getDatabase();
 
   const product = db.products.find(p => p.slug === 'dividi-mesa') || {
     id: 'prod_dividi_mesa',
@@ -588,7 +664,7 @@ app.get('/api/auth/me', authenticate, (req: Request, res: Response) => {
       activated_at: null
     };
     db.user_products.push(license);
-    saveDatabase();
+    await saveDatabase(db);
   }
 
   const safeUser = {
@@ -609,13 +685,14 @@ app.get('/api/auth/me', authenticate, (req: Request, res: Response) => {
 });
 
 // 5. FORGOT PASSWORD / RECOVERY
-app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
+app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
   const { email, newPassword } = req.body;
   if (!email) {
     return res.status(400).json({ error: 'Ingresá tu correo electrónico' });
   }
 
   const normalizedEmail = String(email).trim().toLowerCase();
+  const db = await getDatabase();
   const user = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
 
   if (!user) {
@@ -624,7 +701,7 @@ app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
 
   if (newPassword && String(newPassword).length >= 4) {
     user.password_hash = hashPassword(newPassword);
-    saveDatabase();
+    await saveDatabase(db);
     return res.json({ message: 'Contraseña restablecida con éxito. Ya podés iniciar sesión.' });
   }
 
@@ -645,7 +722,8 @@ app.post('/api/auth/logout', (_req: Request, res: Response) => {
 // -------------------------------------------------------------
 
 // List registered users and licenses
-app.get('/api/admin/users', authenticate, requireAdmin, (req: Request, res: Response) => {
+app.get('/api/admin/users', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  const db = await getDatabase();
   const product = db.products.find(p => p.slug === 'dividi-mesa');
 
   const result = db.users.map(u => {
@@ -669,13 +747,13 @@ app.get('/api/admin/users', authenticate, requireAdmin, (req: Request, res: Resp
 });
 
 // Update license status (pending -> active -> revoked)
-app.post('/api/admin/update-license', authenticate, requireAdmin, (req: Request, res: Response) => {
+app.post('/api/admin/update-license', authenticate, requireAdmin, async (req: Request, res: Response) => {
   const { targetUserId, newStatus } = req.body;
   if (!targetUserId || !['pending', 'active', 'revoked'].includes(newStatus)) {
     return res.status(400).json({ error: 'Parámetros inválidos' });
   }
 
-  // Prevent modifying demo account status
+  const db = await getDatabase();
   const targetUser = db.users.find(u => u.id === targetUserId);
   if (targetUser?.is_demo) {
     return res.status(400).json({ error: 'La cuenta demo de exhibición no se modifica' });
@@ -706,27 +784,33 @@ app.post('/api/admin/update-license', authenticate, requireAdmin, (req: Request,
     }
   }
 
-  saveDatabase();
+  await saveDatabase(db);
   res.json({ message: `Licencia actualizada a: ${newStatus}`, license });
 });
 
 // List administrative notifications
-app.get('/api/admin/notifications', authenticate, requireAdmin, (_req: Request, res: Response) => {
+app.get('/api/admin/notifications', authenticate, requireAdmin, async (_req: Request, res: Response) => {
+  const db = await getDatabase();
   res.json({ notifications: db.notifications || [] });
 });
 
 // Mark notification as read
-app.post('/api/admin/notifications/:id/read', authenticate, requireAdmin, (req: Request, res: Response) => {
+app.post('/api/admin/notifications/:id/read', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  const db = await getDatabase();
   const notif = (db.notifications || []).find(n => n.id === req.params.id);
   if (notif) {
     notif.read = true;
-    saveDatabase();
+    await saveDatabase(db);
   }
   res.json({ success: true });
 });
 
+// Export app for Netlify Functions serverless handler
+export { app };
+
 // -------------------------------------------------------------
-// Vite Server Integration (Dev vs Prod)
+// Standalone Server Integration (Dev & Cloud Run)
+// Only starts if NOT running inside serverless / Netlify environment
 // -------------------------------------------------------------
 async function startServer() {
   const isProd = process.env.NODE_ENV === 'production' || fs.existsSync(path.join(__dirname, 'dist'));
@@ -750,6 +834,13 @@ async function startServer() {
   });
 }
 
-startServer().catch(err => {
-  console.error('Failed to start server:', err);
-});
+const isMainModule = Boolean(
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+);
+
+if (isMainModule && !process.env.NETLIFY && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  startServer().catch(err => {
+    console.error('Failed to start server:', err);
+  });
+}
