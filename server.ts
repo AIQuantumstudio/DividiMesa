@@ -1,4 +1,5 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -14,8 +15,9 @@ const PORT = process.env.PORT || 3000;
 const DB_PATH = path.join(__dirname, 'data', 'database.json');
 const SERVER_SECRET = process.env.SERVER_SECRET || 'dividimesa-quantum-auth-secret-key-2026';
 
-const ADMIN_EMAILS = ['admin@dividimesa.com', 'aiquantumstudio@gmail.com'];
-const NOTIFICATION_RECIPIENT = 'aiquantumstudio@gmail.com';
+// Primary Administrator & Recipient of administrative alerts
+const PRIMARY_ADMIN_EMAIL = 'aiquantumstudio@gmail.com';
+const DEMO_EMAIL = 'demo@aiquantumstudio.com';
 
 // -------------------------------------------------------------
 // Database Interfaces & Persistence
@@ -27,6 +29,8 @@ interface DbUser {
   password_hash: string;
   created_at: string;
   status: 'active' | 'pending' | 'suspended';
+  role: 'admin' | 'user' | 'demo';
+  is_demo?: boolean;
 }
 
 interface DbProduct {
@@ -108,7 +112,7 @@ function shouldSendNotification(email: string, type: string): boolean {
     return true;
   }
 
-  // Login attempt alerts: 1 hour cooldown (3600000 ms) to avoid spam from repeated attempts
+  // 1 hour cooldown (3600000 ms) to avoid spam on repeated non-active login attempts
   if (now - lastTime < 3600000) {
     return false;
   }
@@ -175,7 +179,7 @@ function recordAndDispatchNotification(payload: {
     product_name: payload.productName,
     product_slug: payload.productSlug,
     status: payload.status,
-    recipient: NOTIFICATION_RECIPIENT,
+    recipient: PRIMARY_ADMIN_EMAIL,
     created_at: new Date().toISOString(),
     read: false,
     subject,
@@ -188,7 +192,7 @@ function recordAndDispatchNotification(payload: {
 
   console.log(`\n============================================================`);
   console.log(`📧 NOTIFICACIÓN ADMINISTRATIVA DESPACHADA`);
-  console.log(`Para: ${NOTIFICATION_RECIPIENT}`);
+  console.log(`Para: ${PRIMARY_ADMIN_EMAIL}`);
   console.log(`Asunto: ${subject}`);
   console.log(`Cuerpo:\n${body}`);
   console.log(`============================================================\n`);
@@ -205,94 +209,98 @@ function initDatabase(): DatabaseSchema {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  let existingData: Partial<DatabaseSchema> = {};
-  if (fs.existsSync(DB_PATH)) {
-    try {
-      const content = fs.readFileSync(DB_PATH, 'utf-8');
-      existingData = JSON.parse(content);
-    } catch (e) {
-      console.error('Error reading db.json, creating initial state:', e);
-    }
-  }
-
   const initialProduct: DbProduct = {
     id: 'prod_dividi_mesa',
     name: 'Dividí Mesa',
     slug: 'dividi-mesa'
   };
 
-  const initialUsers: DbUser[] = existingData.users || [
-    {
-      id: 'usr_admin_001',
-      name: 'Admin Autorizado',
-      email: 'admin@dividimesa.com',
-      password_hash: hashPassword('admin123'),
-      created_at: new Date().toISOString(),
-      status: 'active'
-    },
+  // Pre-configured accounts for testing and production
+  const initialUsers: DbUser[] = [
     {
       id: 'usr_admin_quantum',
-      name: 'AI Quantum Studio',
-      email: 'aiquantumstudio@gmail.com',
+      name: 'AI Quantum Studio (Admin)',
+      email: PRIMARY_ADMIN_EMAIL,
       password_hash: hashPassword('admin123'),
       created_at: new Date().toISOString(),
-      status: 'active'
+      status: 'active',
+      role: 'admin',
+      is_demo: false
     },
     {
-      id: 'usr_pending_002',
-      name: 'Usuario Pendiente',
-      email: 'pendiente@dividimesa.com',
-      password_hash: hashPassword('demo123'),
+      id: 'usr_demo_quantum',
+      name: 'Demostración AI Quantum Studio',
+      email: DEMO_EMAIL,
+      password_hash: hashPassword('quantum_demo_secret_2026!'),
       created_at: new Date().toISOString(),
-      status: 'active'
+      status: 'active',
+      role: 'demo',
+      is_demo: true
     },
     {
-      id: 'usr_revoked_003',
-      name: 'Usuario Revocado',
-      email: 'revocado@dividimesa.com',
+      id: 'usr_cliente_activo',
+      name: 'Cliente Activo (Ejemplo)',
+      email: 'cliente.activo@ejemplo.com',
       password_hash: hashPassword('demo123'),
       created_at: new Date().toISOString(),
-      status: 'active'
+      status: 'active',
+      role: 'user',
+      is_demo: false
+    },
+    {
+      id: 'usr_cliente_pendiente',
+      name: 'Cliente Pendiente (Ejemplo)',
+      email: 'cliente.pendiente@ejemplo.com',
+      password_hash: hashPassword('demo123'),
+      created_at: new Date().toISOString(),
+      status: 'active',
+      role: 'user',
+      is_demo: false
+    },
+    {
+      id: 'usr_cliente_revocado',
+      name: 'Cliente Revocado (Ejemplo)',
+      email: 'cliente.revocado@ejemplo.com',
+      password_hash: hashPassword('demo123'),
+      created_at: new Date().toISOString(),
+      status: 'active',
+      role: 'user',
+      is_demo: false
     }
   ];
 
-  // Make sure aiquantumstudio is in users
-  if (!initialUsers.some(u => u.email.toLowerCase() === 'aiquantumstudio@gmail.com')) {
-    initialUsers.push({
-      id: 'usr_admin_quantum',
-      name: 'AI Quantum Studio',
-      email: 'aiquantumstudio@gmail.com',
-      password_hash: hashPassword('admin123'),
-      created_at: new Date().toISOString(),
-      status: 'active'
-    });
-  }
-
-  const initialLicenses: DbUserProduct[] = existingData.user_products || [
+  const initialLicenses: DbUserProduct[] = [
     {
-      id: 'lic_001',
-      user_id: 'usr_admin_001',
-      product_id: 'prod_dividi_mesa',
-      status: 'active',
-      activated_at: new Date().toISOString()
-    },
-    {
-      id: 'lic_quantum',
+      id: 'lic_admin',
       user_id: 'usr_admin_quantum',
       product_id: 'prod_dividi_mesa',
       status: 'active',
       activated_at: new Date().toISOString()
     },
     {
-      id: 'lic_002',
-      user_id: 'usr_pending_002',
+      id: 'lic_demo',
+      user_id: 'usr_demo_quantum',
+      product_id: 'prod_dividi_mesa',
+      status: 'active',
+      activated_at: new Date().toISOString()
+    },
+    {
+      id: 'lic_cliente_activo',
+      user_id: 'usr_cliente_activo',
+      product_id: 'prod_dividi_mesa',
+      status: 'active',
+      activated_at: new Date().toISOString()
+    },
+    {
+      id: 'lic_cliente_pendiente',
+      user_id: 'usr_cliente_pendiente',
       product_id: 'prod_dividi_mesa',
       status: 'pending',
       activated_at: null
     },
     {
-      id: 'lic_003',
-      user_id: 'usr_revoked_003',
+      id: 'lic_cliente_revocado',
+      user_id: 'usr_cliente_revocado',
       product_id: 'prod_dividi_mesa',
       status: 'revoked',
       activated_at: null
@@ -301,9 +309,9 @@ function initDatabase(): DatabaseSchema {
 
   const dbData: DatabaseSchema = {
     users: initialUsers,
-    products: existingData.products || [initialProduct],
+    products: [initialProduct],
     user_products: initialLicenses,
-    notifications: existingData.notifications || []
+    notifications: []
   };
 
   fs.writeFileSync(DB_PATH, JSON.stringify(dbData, null, 2), 'utf-8');
@@ -348,11 +356,65 @@ function authenticate(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Strict Admin Gatekeeper: ONLY aiquantumstudio@gmail.com with role === 'admin'
+function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const currentUser = (req as any).user as DbUser;
+  if (
+    !currentUser ||
+    currentUser.email.toLowerCase() !== PRIMARY_ADMIN_EMAIL.toLowerCase() ||
+    currentUser.role !== 'admin'
+  ) {
+    return res.status(403).json({ error: 'Acceso restringido: requiere permisos de Administrador Principal' });
+  }
+  next();
+}
+
 // -------------------------------------------------------------
 // Auth & License Routes (/api/auth)
 // -------------------------------------------------------------
 
-// 1. LOGIN
+// 1. DEMO LOGIN (One-click controlled demo without revealing credentials)
+app.post('/api/auth/demo', (_req: Request, res: Response) => {
+  const demoUser = db.users.find(u => u.email.toLowerCase() === DEMO_EMAIL.toLowerCase());
+  if (!demoUser) {
+    return res.status(500).json({ error: 'Cuenta demo no disponible' });
+  }
+
+  const product = db.products.find(p => p.slug === 'dividi-mesa') || {
+    id: 'prod_dividi_mesa',
+    name: 'Dividí Mesa',
+    slug: 'dividi-mesa'
+  };
+
+  const license: DbUserProduct = {
+    id: 'lic_demo',
+    user_id: demoUser.id,
+    product_id: product.id,
+    status: 'active',
+    activated_at: new Date().toISOString()
+  };
+
+  const token = generateToken(demoUser.id);
+
+  const safeUser = {
+    id: demoUser.id,
+    name: demoUser.name,
+    email: demoUser.email,
+    created_at: demoUser.created_at,
+    status: demoUser.status,
+    role: demoUser.role,
+    is_demo: true
+  };
+
+  res.json({
+    token,
+    user: safeUser,
+    product,
+    license
+  });
+});
+
+// 2. STANDARD LOGIN
 app.post('/api/auth/login', (req: Request, res: Response) => {
   const { email, password } = req.body;
 
@@ -383,25 +445,27 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     activated_at: null
   };
 
-  // Administrative Notifications for non-active login attempts
-  if (license.status === 'pending') {
-    recordAndDispatchNotification({
-      type: 'LOGIN_ATTEMPT_PENDING',
-      userName: user.name,
-      userEmail: user.email,
-      productName: product.name,
-      productSlug: product.slug,
-      status: 'pending'
-    });
-  } else if (license.status === 'revoked') {
-    recordAndDispatchNotification({
-      type: 'LOGIN_ATTEMPT_REVOKED',
-      userName: user.name,
-      userEmail: user.email,
-      productName: product.name,
-      productSlug: product.slug,
-      status: 'revoked'
-    });
+  // Administrative Notifications for non-active login attempts (only for real users, not demo)
+  if (!user.is_demo) {
+    if (license.status === 'pending') {
+      recordAndDispatchNotification({
+        type: 'LOGIN_ATTEMPT_PENDING',
+        userName: user.name,
+        userEmail: user.email,
+        productName: product.name,
+        productSlug: product.slug,
+        status: 'pending'
+      });
+    } else if (license.status === 'revoked') {
+      recordAndDispatchNotification({
+        type: 'LOGIN_ATTEMPT_REVOKED',
+        userName: user.name,
+        userEmail: user.email,
+        productName: product.name,
+        productSlug: product.slug,
+        status: 'revoked'
+      });
+    }
   }
 
   const token = generateToken(user.id);
@@ -411,7 +475,9 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     name: user.name,
     email: user.email,
     created_at: user.created_at,
-    status: user.status
+    status: user.status,
+    role: user.role,
+    is_demo: user.is_demo || false
   };
 
   res.json({
@@ -422,7 +488,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
   });
 });
 
-// 2. REGISTER
+// 3. REGISTER (Real clients register with status: 'pending')
 app.post('/api/auth/register', (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
@@ -443,7 +509,9 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     email: normalizedEmail,
     password_hash: hashPassword(password),
     created_at: new Date().toISOString(),
-    status: 'active'
+    status: 'active',
+    role: 'user',
+    is_demo: false
   };
 
   db.users.push(newUser);
@@ -483,7 +551,9 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     name: newUser.name,
     email: newUser.email,
     created_at: newUser.created_at,
-    status: newUser.status
+    status: newUser.status,
+    role: newUser.role,
+    is_demo: false
   };
 
   res.status(201).json({
@@ -491,11 +561,11 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     user: safeUser,
     product,
     license: newLicense,
-    message: 'Cuenta creada con éxito. Permiso Dividí Mesa: Pendiente de activación.'
+    message: 'Cuenta creada con éxito. Permiso Dividí Mesa: Pendiente de activación por AI Quantum Studio.'
   });
 });
 
-// 3. ME (SESSION & ACCESS VERIFICATION)
+// 4. ME (SESSION & ACCESS VERIFICATION)
 app.get('/api/auth/me', authenticate, (req: Request, res: Response) => {
   const user = (req as any).user as DbUser;
 
@@ -526,7 +596,9 @@ app.get('/api/auth/me', authenticate, (req: Request, res: Response) => {
     name: user.name,
     email: user.email,
     created_at: user.created_at,
-    status: user.status
+    status: user.status,
+    role: user.role,
+    is_demo: user.is_demo || false
   };
 
   res.json({
@@ -536,7 +608,7 @@ app.get('/api/auth/me', authenticate, (req: Request, res: Response) => {
   });
 });
 
-// 4. FORGOT PASSWORD / RECOVERY
+// 5. FORGOT PASSWORD / RECOVERY
 app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
   const { email, newPassword } = req.body;
   if (!email) {
@@ -562,22 +634,18 @@ app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
   });
 });
 
-// 5. LOGOUT
+// 6. LOGOUT
 app.post('/api/auth/logout', (_req: Request, res: Response) => {
   res.json({ message: 'Sesión cerrada correctamente' });
 });
 
 // -------------------------------------------------------------
 // Admin & Quantum Studio Licensing & Notification Routes
+// Protected strictly by requireAdmin middleware
 // -------------------------------------------------------------
 
-// List users and licenses
-app.get('/api/admin/users', authenticate, (req: Request, res: Response) => {
-  const currentUser = (req as any).user as DbUser;
-  if (!ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) {
-    return res.status(403).json({ error: 'Acceso restringido a administradores' });
-  }
-
+// List registered users and licenses
+app.get('/api/admin/users', authenticate, requireAdmin, (req: Request, res: Response) => {
   const product = db.products.find(p => p.slug === 'dividi-mesa');
 
   const result = db.users.map(u => {
@@ -590,6 +658,8 @@ app.get('/api/admin/users', authenticate, (req: Request, res: Response) => {
       email: u.email,
       created_at: u.created_at,
       status: u.status,
+      role: u.role,
+      is_demo: u.is_demo || false,
       licenseStatus: license?.status || 'pending',
       activated_at: license?.activated_at || null
     };
@@ -599,15 +669,16 @@ app.get('/api/admin/users', authenticate, (req: Request, res: Response) => {
 });
 
 // Update license status (pending -> active -> revoked)
-app.post('/api/admin/update-license', authenticate, (req: Request, res: Response) => {
-  const currentUser = (req as any).user as DbUser;
-  if (!ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) {
-    return res.status(403).json({ error: 'Acceso restringido a administradores' });
-  }
-
+app.post('/api/admin/update-license', authenticate, requireAdmin, (req: Request, res: Response) => {
   const { targetUserId, newStatus } = req.body;
   if (!targetUserId || !['pending', 'active', 'revoked'].includes(newStatus)) {
     return res.status(400).json({ error: 'Parámetros inválidos' });
+  }
+
+  // Prevent modifying demo account status
+  const targetUser = db.users.find(u => u.id === targetUserId);
+  if (targetUser?.is_demo) {
+    return res.status(400).json({ error: 'La cuenta demo de exhibición no se modifica' });
   }
 
   const product = db.products.find(p => p.slug === 'dividi-mesa');
@@ -640,22 +711,12 @@ app.post('/api/admin/update-license', authenticate, (req: Request, res: Response
 });
 
 // List administrative notifications
-app.get('/api/admin/notifications', authenticate, (req: Request, res: Response) => {
-  const currentUser = (req as any).user as DbUser;
-  if (!ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) {
-    return res.status(403).json({ error: 'Acceso restringido a administradores' });
-  }
-
+app.get('/api/admin/notifications', authenticate, requireAdmin, (_req: Request, res: Response) => {
   res.json({ notifications: db.notifications || [] });
 });
 
 // Mark notification as read
-app.post('/api/admin/notifications/:id/read', authenticate, (req: Request, res: Response) => {
-  const currentUser = (req as any).user as DbUser;
-  if (!ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) {
-    return res.status(403).json({ error: 'Acceso restringido a administradores' });
-  }
-
+app.post('/api/admin/notifications/:id/read', authenticate, requireAdmin, (req: Request, res: Response) => {
   const notif = (db.notifications || []).find(n => n.id === req.params.id);
   if (notif) {
     notif.read = true;

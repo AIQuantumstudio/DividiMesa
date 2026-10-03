@@ -92,6 +92,8 @@ export interface User {
   email: string;
   created_at: string;
   status: 'active' | 'pending' | 'suspended';
+  role?: 'admin' | 'user' | 'demo';
+  is_demo?: boolean;
 }
 
 export interface Product {

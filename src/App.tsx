@@ -66,6 +66,15 @@ export default function App() {
   const checkAuthSession = useCallback(async () => {
     setAuthLoading(true);
     try {
+      // Automatic controlled demo session if query parameter ?demo=true is present
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get('demo') === 'true') {
+        const demoData = await authService.loginDemo();
+        setAuthUser(demoData.user);
+        setAuthLicense(demoData.license);
+        return;
+      }
+
       const data = await authService.getMe();
       setAuthUser(data.user);
       setAuthLicense(data.license);
@@ -708,7 +717,7 @@ export default function App() {
         isAdminMode={isAdminMode}
         restaurantName={restaurantName}
         currentDiner={currentDiner}
-        isSystemAdmin={authUser.email === 'admin@dividimesa.com' || authUser.email === 'aiquantumstudio@gmail.com'}
+        isSystemAdmin={authUser.email.toLowerCase() === 'aiquantumstudio@gmail.com' && authUser.role === 'admin'}
         onToggleMode={handleToggleSystemMode}
         onOpenUserModal={() => {
           playTapSound();
@@ -958,11 +967,13 @@ export default function App() {
         onClose={() => setAskModalState(prev => ({ ...prev, isOpen: false }))}
       />
 
-      <AdminLicenseModal
-        isOpen={adminLicenseModalOpen}
-        onClose={() => setAdminLicenseModalOpen(false)}
-        onToast={showToast}
-      />
+      {authUser.email.toLowerCase() === 'aiquantumstudio@gmail.com' && authUser.role === 'admin' && (
+        <AdminLicenseModal
+          isOpen={adminLicenseModalOpen}
+          onClose={() => setAdminLicenseModalOpen(false)}
+          onToast={showToast}
+        />
+      )}
 
       {/* Toast Notification */}
       <div

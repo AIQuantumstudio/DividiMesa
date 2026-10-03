@@ -61,6 +61,16 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const authService = {
+  async loginDemo(): Promise<AuthResponse> {
+    const data = await request<AuthResponse>('/api/auth/demo', {
+      method: 'POST'
+    });
+    if (data.token) {
+      setStoredToken(data.token);
+    }
+    return data;
+  },
+
   async login(email: string, password: string): Promise<AuthResponse> {
     const data = await request<AuthResponse>('/api/auth/login', {
       method: 'POST',
