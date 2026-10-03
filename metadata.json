@@ -1,0 +1,6 @@
+{
+  "name": "DividiMesa - Cuentas Grupales",
+  "description": "Dividí los gastos de la mesa del restaurante fácilmente, plato por plato o en partes iguales, con propina y alias de transferencia.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
