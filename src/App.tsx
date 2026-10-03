@@ -830,9 +830,13 @@ export default function App() {
       <ScannerModal
         isOpen={scannerModalOpen}
         onClose={() => setScannerModalOpen(false)}
-        onScanSuccess={() => {
-          handleLoadPreset('asado');
-          showToast('Ticket procesado (demo)');
+        onScanSuccess={(scannedItems, mode) => {
+          if (mode === 'replace') {
+            setItems(scannedItems);
+          } else {
+            setItems(prev => [...prev, ...scannedItems]);
+          }
+          showToast(`¡${scannedItems.length} platos escaneados del ticket!`);
         }}
       />
 
