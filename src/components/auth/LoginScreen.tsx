@@ -12,9 +12,6 @@ import {
   Eye,
   EyeOff,
   CheckCircle2,
-  KeyRound,
-  ChevronDown,
-  ChevronUp,
   RefreshCw
 } from 'lucide-react';
 import { authService, AuthResponse } from '../../services/auth';
@@ -43,9 +40,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
   // Recovery flow states
   const [recoveryStep, setRecoveryStep] = useState<1 | 2>(1);
   const [recoveryVerifiedEmail, setRecoveryVerifiedEmail] = useState<string>('');
-
-  // Diagnostic collapsible panel (hidden by default for clean public launch)
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   // 1. One-Click Demo Mode (NO credentials shown or required)
   const handleDemoAccess = async () => {
@@ -157,15 +151,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Quick fill helper for diagnostics
-  const handleQuickFill = (testEmail: string, testPass: string) => {
-    setTab('login');
-    setEmail(testEmail);
-    setPassword(testPass);
-    setError(null);
-    setSuccessMsg(null);
   };
 
   return (
@@ -470,86 +455,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
               </span>
             )}
           </div>
-        </div>
-
-        {/* Collapsible Diagnostic & Testing Panel (Cleanly hidden for production release) */}
-        <div className="glass-panel rounded-2xl p-3 border border-slate-800/80">
-          <button
-            type="button"
-            onClick={() => setShowDiagnostics(!showDiagnostics)}
-            className="w-full flex items-center justify-between text-[11px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center gap-1.5 font-semibold">
-              <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Accesos rápidos de prueba (Diagnóstico interno)</span>
-            </div>
-            {showDiagnostics ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-
-          {showDiagnostics && (
-            <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-1.5">
-              <p className="text-[10px] text-slate-500">
-                Seleccioná cualquiera de las cuentas precargadas para probar el comportamiento en tiempo real:
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
-                {/* 1. Admin */}
-                <button
-                  type="button"
-                  onClick={() => handleQuickFill('aiquantumstudio@gmail.com', 'admin123')}
-                  className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-left transition-colors cursor-pointer"
-                  title="Administrador Principal (aiquantumstudio@gmail.com)"
-                >
-                  <div className="font-bold flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                    <span>Admin</span>
-                  </div>
-                  <div className="text-[9px] text-slate-400 truncate">aiquantumstudio</div>
-                </button>
-
-                {/* 2. Activo */}
-                <button
-                  type="button"
-                  onClick={() => handleQuickFill('cliente.activo@ejemplo.com', 'demo123')}
-                  className="p-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 text-left transition-colors cursor-pointer"
-                  title="Cliente Autorizado"
-                >
-                  <div className="font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-teal-400" />
-                    <span>Activo</span>
-                  </div>
-                  <div className="text-[9px] text-slate-400 truncate">cliente.activo@...</div>
-                </button>
-
-                {/* 3. Pendiente */}
-                <button
-                  type="button"
-                  onClick={() => handleQuickFill('cliente.pendiente@ejemplo.com', 'demo123')}
-                  className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-left transition-colors cursor-pointer"
-                  title="Cliente Pendiente"
-                >
-                  <div className="font-bold flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    <span>Pendiente</span>
-                  </div>
-                  <div className="text-[9px] text-slate-400 truncate">cliente.pendiente@...</div>
-                </button>
-
-                {/* 4. Revocado */}
-                <button
-                  type="button"
-                  onClick={() => handleQuickFill('cliente.revocado@ejemplo.com', 'demo123')}
-                  className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-left transition-colors cursor-pointer"
-                  title="Cliente Revocado"
-                >
-                  <div className="font-bold flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                    <span>Revocado</span>
-                  </div>
-                  <div className="text-[9px] text-slate-400 truncate">cliente.revocado@...</div>
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer */}
