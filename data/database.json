@@ -69,6 +69,15 @@
       "status": "active",
       "role": "user",
       "is_demo": false
+    },
+    {
+      "id": "usr_test_1791118139230",
+      "name": "Lautaro Martínez",
+      "email": "lautaro@testrestaurante.com",
+      "password_hash": "abc123hash",
+      "created_at": "2026-10-04T12:48:59.230Z",
+      "status": "active",
+      "role": "user"
     }
   ],
   "products": [
@@ -127,6 +136,13 @@
       "product_id": "prod_dividi_mesa",
       "status": "active",
       "activated_at": "2026-10-03T19:38:05.996Z"
+    },
+    {
+      "id": "lic_1791118139230",
+      "user_id": "usr_test_1791118139230",
+      "product_id": "prod_dividi_mesa",
+      "status": "active",
+      "activated_at": "2026-10-04T12:48:59.232Z"
     }
   ],
   "notifications": [
@@ -171,6 +187,30 @@
       "read": false,
       "subject": "[AI Quantum Studio] Nueva solicitud de acceso - vilmar valeria olivera (Dividí Mesa)",
       "body": "Se ha registrado un nuevo usuario para utilizar Dividí Mesa:\n\n• Nombre: vilmar valeria olivera\n• Email: aquantumstudio@gmail.com\n• Fecha y hora: 3/10/26, 4:22:20 p. m.\n• Producto solicitado: Dividí Mesa (slug: dividi-mesa)\n• Estado actual: PENDING (Acceso NO otorgado hasta aprobación manual)\n\nPodés aprobar o gestionar este acceso desde el panel de Licencias de la aplicación."
+    }
+  ],
+  "action_tokens": [
+    {
+      "id": "tok_act_1791118139230",
+      "token": "dXNyX3Rlc3RfMTc5MTExODEzOTIzMDpwcm9kX2RpdmlkaV9tZXNhOmFjdGl2YXRlOmVmNTBhZTAyMTYxMDJmZmIwZjI4OWUzZDc0MWE4OTRlOjE3OTExMTgxMzkyMzA6YjhmZGIxNjZjYzc1ODhkODYwMzgzMDU0MzdkZWUwYzZiZWNiNmMwOWYyODkwZDRkYTcxZDQxZGM1NzJlOWYyOA",
+      "user_id": "usr_test_1791118139230",
+      "product_id": "prod_dividi_mesa",
+      "action": "activate",
+      "created_at": "2026-10-04T12:48:59.230Z",
+      "expires_at": "2026-10-11T12:48:59.230Z",
+      "used": true,
+      "used_at": "2026-10-04T12:48:59.232Z"
+    },
+    {
+      "id": "tok_rej_1791118139230",
+      "token": "dXNyX3Rlc3RfMTc5MTExODEzOTIzMDpwcm9kX2RpdmlkaV9tZXNhOnJlamVjdDpiNDJjNzk5OGVhYjEyYzI3NjA2OWY1ZGMzZGE1ZDEyMjoxNzkxMTE4MTM5MjMwOjhlOWNlMzY3ZDI2M2Q3MDM2NjY1MWJiZjUwYTg0ZWRiNTFhNzQwZGNiYjE2Mjk4NmFlZmM1ZTcyZTFiODc2ODE",
+      "user_id": "usr_test_1791118139230",
+      "product_id": "prod_dividi_mesa",
+      "action": "reject",
+      "created_at": "2026-10-04T12:48:59.230Z",
+      "expires_at": "2026-10-11T12:48:59.230Z",
+      "used": true,
+      "used_at": "2026-10-04T12:48:59.232Z"
     }
   ]
 }
