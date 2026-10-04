@@ -2,14 +2,11 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
 import { apiRouter } from './src/server/api.ts';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+const rootDir = process.cwd();
 const PORT = process.env.PORT || 3000;
 
 const app = express();
@@ -20,7 +17,7 @@ app.use('/api', apiRouter);
 
 // Standalone Server Integration (Dev & Cloud Run)
 async function startServer() {
-  const isProd = process.env.NODE_ENV === 'production' || fs.existsSync(path.join(__dirname, 'dist'));
+  const isProd = process.env.NODE_ENV === 'production' || fs.existsSync(path.join(rootDir, 'dist'));
 
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
@@ -30,9 +27,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
+    app.use(express.static(path.join(rootDir, 'dist')));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.join(rootDir, 'dist', 'index.html'));
     });
   }
 
@@ -43,7 +40,7 @@ async function startServer() {
 
 const isMainModule = Boolean(
   process.argv[1] &&
-  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+  path.resolve(process.argv[1]).includes('server')
 );
 
 if (isMainModule && !process.env.NETLIFY && !process.env.AWS_LAMBDA_FUNCTION_NAME) {

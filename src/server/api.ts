@@ -3,17 +3,11 @@ import type { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { getStore } from '@netlify/blobs';
 
 const SERVER_SECRET = process.env.SERVER_SECRET || 'dividimesa-quantum-auth-secret-key-2026';
 const PRIMARY_ADMIN_EMAIL = 'aiquantumstudio@gmail.com';
 const DEMO_EMAIL = 'demo@aiquantumstudio.com';
-const DB_PATH = (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY)
-  ? path.join('/tmp', 'database.json')
-  : path.join(__dirname, '..', '..', 'data', 'database.json');
 
 export interface DbUser {
   id: string;
@@ -233,10 +227,49 @@ export function getInitialSeed(): DatabaseSchema {
 
 let memoryDb: DatabaseSchema = getInitialSeed();
 
-export async function getDatabase(): Promise<DatabaseSchema> {
+function getBlobStore() {
+  if (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    try {
+      return getStore('dividimesa-data');
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function getLocalDbPath(): string | null {
   try {
-    if (fs.existsSync(DB_PATH)) {
-      const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+    if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY) {
+      return path.join('/tmp', 'database.json');
+    }
+    return path.resolve(process.cwd(), 'data', 'database.json');
+  } catch {
+    return null;
+  }
+}
+
+export async function getDatabase(): Promise<DatabaseSchema> {
+  // 1. Production persistence via Netlify Blobs
+  const store = getBlobStore();
+  if (store) {
+    try {
+      const data = await store.get('database', { type: 'json' });
+      if (data && typeof data === 'object' && Array.isArray((data as any).users)) {
+        if (!Array.isArray((data as any).action_tokens)) (data as any).action_tokens = [];
+        memoryDb = data as DatabaseSchema;
+        return memoryDb;
+      }
+    } catch {
+      // Blobs not ready yet or key doesn't exist
+    }
+  }
+
+  // 2. Local environment database.json
+  try {
+    const localDbPath = getLocalDbPath();
+    if (localDbPath && fs.existsSync(localDbPath)) {
+      const data = JSON.parse(fs.readFileSync(localDbPath, 'utf-8'));
       if (data && Array.isArray(data.users)) {
         if (!Array.isArray(data.action_tokens)) data.action_tokens = [];
         memoryDb = data;
@@ -246,16 +279,33 @@ export async function getDatabase(): Promise<DatabaseSchema> {
   } catch {
     // fallback to memory
   }
+
   if (!Array.isArray(memoryDb.action_tokens)) memoryDb.action_tokens = [];
   return memoryDb;
 }
 
 export async function saveDatabase(data: DatabaseSchema): Promise<void> {
   memoryDb = data;
+
+  // 1. Persist to Netlify Blobs in production
+  const store = getBlobStore();
+  if (store) {
+    try {
+      await store.setJSON('database', data);
+      return;
+    } catch {
+      // fallback to filesystem
+    }
+  }
+
+  // 2. Persist to local filesystem
   try {
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    const localDbPath = getLocalDbPath();
+    if (localDbPath) {
+      const dir = path.dirname(localDbPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(localDbPath, JSON.stringify(data, null, 2), 'utf-8');
+    }
   } catch {
     // safe fallback
   }
