@@ -42,10 +42,11 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={onOpenScanner}
-          className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1.5 rounded-lg border border-slate-700 active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
+          className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
+          title="Escanear ticket"
         >
           <Camera className="w-3 h-3 text-emerald-400" />
-          <span>Escanear</span>
+          <span>Escanear ticket</span>
         </button>
       </div>
     </div>
