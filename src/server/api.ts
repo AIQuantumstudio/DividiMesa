@@ -327,61 +327,76 @@ export async function sendEmail({
   text?: string;
 }): Promise<EmailSendResult> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
-
-  // CORRECCIÓN 3 — VERIFICACIÓN DE VARIABLE DE ENTORNO
-  if (!apiKey) {
-    console.error('[Email Error] RESEND_API_KEY no configurada en el entorno de producción.');
-    return {
-      success: false,
-      error: 'RESEND_API_KEY no configurada en el entorno de producción.'
-    };
-  }
-
-  // CORRECCIÓN 4 — EMAIL_FROM
   const fromEmail = process.env.EMAIL_FROM || 'Dividí Mesa <onboarding@resend.dev>';
 
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to,
-        subject,
-        html,
-        text
-      })
-    });
+  // 1. Envío prioritario a través de Resend API ($0 Free Tier, 3000 emails/mes)
+  if (apiKey) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to,
+          subject,
+          html,
+          text
+        })
+      });
 
-    const resData: any = await res.json().catch(() => ({}));
+      const resData: any = await res.json().catch(() => ({}));
 
-    if (res.ok) {
-      console.log(`[Email Éxito] Correo enviado y aceptado por Resend para ${to}. ID: ${resData.id || 'N/A'}`);
-      return {
-        success: true,
-        id: resData.id,
-        statusCode: res.status
-      };
-    } else {
-      // Registrar en el log de Netlify: código de error, mensaje de error, respuesta del proveedor (sin exponer la key)
-      const errorMsg = resData.message || resData.error || `HTTP error ${res.status}`;
-      console.error(`[Email Error Resend] Código HTTP: ${res.status} | Mensaje: ${errorMsg} | Respuesta:`, JSON.stringify(resData));
+      if (res.ok) {
+        console.log(`[Email Éxito] Correo enviado y aceptado por Resend para ${to}. ID: ${resData.id || 'N/A'}`);
+        return {
+          success: true,
+          id: resData.id,
+          statusCode: res.status
+        };
+      } else {
+        const errorMsg = resData.message || resData.error || `HTTP error ${res.status}`;
+        console.error(`[Email Error Resend] Código HTTP: ${res.status} | Mensaje: ${errorMsg} | Respuesta:`, JSON.stringify(resData));
+        return {
+          success: false,
+          statusCode: res.status,
+          error: errorMsg
+        };
+      }
+    } catch (netErr: any) {
+      console.error('[Email Error Red] Error de conexión al intentar enviar email a Resend:', netErr.message || netErr);
       return {
         success: false,
-        statusCode: res.status,
-        error: errorMsg
+        error: netErr.message || 'Error de red con el proveedor de correo'
       };
     }
-  } catch (netErr: any) {
-    console.error('[Email Error Red] Error de conexión al intentar enviar email a Resend:', netErr.message || netErr);
-    return {
-      success: false,
-      error: netErr.message || 'Error de red con el proveedor de correo'
-    };
   }
+
+  // 2. Webhook notification (Opcional gratuito secundario)
+  if (process.env.NOTIFICATION_WEBHOOK_URL) {
+    try {
+      const hookRes = await fetch(process.env.NOTIFICATION_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, subject, html, text })
+      });
+      if (hookRes.ok) {
+        console.log(`[Webhook Éxito] Notificación enviada al webhook para ${to}`);
+        return { success: true };
+      }
+    } catch (hookErr: any) {
+      console.warn('[Webhook] Dispatch error:', hookErr);
+    }
+  }
+
+  // Si no está configurada la API key en el entorno
+  console.error('[Email Error] RESEND_API_KEY no configurada en el entorno de producción.');
+  return {
+    success: false,
+    error: 'RESEND_API_KEY no configurada en el entorno de producción.'
+  };
 }
 
 function renderActionHtml({
