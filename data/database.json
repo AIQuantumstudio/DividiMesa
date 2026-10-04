@@ -69,16 +69,6 @@
       "status": "active",
       "role": "user",
       "is_demo": false
-    },
-    {
-      "id": "usr_1791124699539_ua61",
-      "name": "Carlos Menem",
-      "email": "carlos_test_1791124699532@cliente.com",
-      "password_hash": "adb031754ed3a7169a20ed9ac772f1b91f30f4a83a9a779f45e06ab0abd8aee1",
-      "created_at": "2026-10-04T14:38:19.539Z",
-      "status": "active",
-      "role": "user",
-      "is_demo": false
     }
   ],
   "products": [
@@ -137,30 +127,9 @@
       "product_id": "prod_dividi_mesa",
       "status": "active",
       "activated_at": "2026-10-03T19:38:05.996Z"
-    },
-    {
-      "id": "lic_1791124699539",
-      "user_id": "usr_1791124699539_ua61",
-      "product_id": "prod_dividi_mesa",
-      "status": "pending",
-      "activated_at": null
     }
   ],
   "notifications": [
-    {
-      "id": "notif_1791124699554_obq6",
-      "type": "NEW_USER_REGISTERED",
-      "user_name": "Carlos Menem",
-      "user_email": "carlos_test_1791124699532@cliente.com",
-      "product_name": "Dividí Mesa",
-      "product_slug": "dividi-mesa",
-      "status": "pending",
-      "recipient": "aiquantumstudio@gmail.com",
-      "created_at": "2026-10-04T14:38:19.539Z",
-      "read": false,
-      "subject": "Nueva solicitud de acceso — Dividí Mesa",
-      "body": "Se registró un nuevo usuario y está esperando aprobación.\n\nNombre:\nCarlos Menem\n\nEmail:\ncarlos_test_1791124699532@cliente.com\n\nProducto:\nDividí Mesa\n\nEstado:\nPENDING\n\nFecha:\n04/10/2026, 02:38 p. m.\n\nID de usuario:\nusr_1791124699539_ua61\n\n[ ACTIVAR ACCESO ]:\nhttps://ais-dev-meiym3mx7xrpckef2sgnhe-499320197459.us-east1.run.app/api/license/action?token=dXNyXzE3OTExMjQ2OTk1MzlfdWE2MTpwcm9kX2RpdmlkaV9tZXNhOmFjdGl2YXRlOmFjZTFiNDFmYjlhNWIzMTFkZTJkMTcyODc3Y2EzNTJkOjE3OTExMjQ2OTk1NTM6Y2IyODJkOWIzMWM1MGYwOTgwZWQ4MDI0YThkYWRkNDM0MjFkNTY4MjYyOTFhMmQ3ODZjMWMzMmNhNjQwMGNkZA\n\n[ RECHAZAR ACCESO ]:\nhttps://ais-dev-meiym3mx7xrpckef2sgnhe-499320197459.us-east1.run.app/api/license/action?token=dXNyXzE3OTExMjQ2OTk1MzlfdWE2MTpwcm9kX2RpdmlkaV9tZXNhOnJlamVjdDo3MmY3YTljYTllZGViMmNjYzJhMjI3N2Y5N2UyZGM5ZToxNzkxMTI0Njk5NTU0OmJhODM4N2U1NjU3OGRkNGFmMTVlMDExNDU0MjUwYjg5M2EzNTA5NDIwYjBlOWQxZDRkOWM0MjBkZjgzOGY5MDE"
-    },
     {
       "id": "notif_1791056285994_2uto",
       "type": "LOGIN_ATTEMPT_PENDING",
@@ -204,28 +173,5 @@
       "body": "Se ha registrado un nuevo usuario para utilizar Dividí Mesa:\n\n• Nombre: vilmar valeria olivera\n• Email: aquantumstudio@gmail.com\n• Fecha y hora: 3/10/26, 4:22:20 p. m.\n• Producto solicitado: Dividí Mesa (slug: dividi-mesa)\n• Estado actual: PENDING (Acceso NO otorgado hasta aprobación manual)\n\nPodés aprobar o gestionar este acceso desde el panel de Licencias de la aplicación."
     }
   ],
-  "action_tokens": [
-    {
-      "id": "tok_1791124699554_1",
-      "token": "dXNyXzE3OTExMjQ2OTk1MzlfdWE2MTpwcm9kX2RpdmlkaV9tZXNhOmFjdGl2YXRlOmFjZTFiNDFmYjlhNWIzMTFkZTJkMTcyODc3Y2EzNTJkOjE3OTExMjQ2OTk1NTM6Y2IyODJkOWIzMWM1MGYwOTgwZWQ4MDI0YThkYWRkNDM0MjFkNTY4MjYyOTFhMmQ3ODZjMWMzMmNhNjQwMGNkZA",
-      "user_id": "usr_1791124699539_ua61",
-      "product_id": "prod_dividi_mesa",
-      "action": "activate",
-      "created_at": "2026-10-04T14:38:19.539Z",
-      "expires_at": "2026-10-11T14:38:19.554Z",
-      "used": false,
-      "used_at": null
-    },
-    {
-      "id": "tok_1791124699554_2",
-      "token": "dXNyXzE3OTExMjQ2OTk1MzlfdWE2MTpwcm9kX2RpdmlkaV9tZXNhOnJlamVjdDo3MmY3YTljYTllZGViMmNjYzJhMjI3N2Y5N2UyZGM5ZToxNzkxMTI0Njk5NTU0OmJhODM4N2U1NjU3OGRkNGFmMTVlMDExNDU0MjUwYjg5M2EzNTA5NDIwYjBlOWQxZDRkOWM0MjBkZjgzOGY5MDE",
-      "user_id": "usr_1791124699539_ua61",
-      "product_id": "prod_dividi_mesa",
-      "action": "reject",
-      "created_at": "2026-10-04T14:38:19.539Z",
-      "expires_at": "2026-10-11T14:38:19.554Z",
-      "used": false,
-      "used_at": null
-    }
-  ]
+  "action_tokens": []
 }

@@ -73,32 +73,6 @@ export function hashPassword(pwd: string): string {
   return crypto.createHash('sha256').update(pwd + SERVER_SECRET).digest('hex');
 }
 
-export function createActionToken(userId: string, productId: string, action: 'activate' | 'reject'): string {
-  const nonce = crypto.randomBytes(16).toString('hex');
-  const now = Date.now();
-  const payload = `${userId}:${productId}:${action}:${nonce}:${now}`;
-  const signature = crypto.createHmac('sha256', SERVER_SECRET).update(payload).digest('hex');
-  return Buffer.from(`${payload}:${signature}`).toString('base64url');
-}
-
-export function verifyActionTokenSignature(tokenStr: string): { userId: string; productId: string; action: 'activate' | 'reject'; nonce: string; timestamp: number } | null {
-  try {
-    const decoded = Buffer.from(tokenStr, 'base64url').toString('utf8');
-    const [userId, productId, action, nonce, timestampStr, signature] = decoded.split(':');
-    if (!userId || !productId || !action || !nonce || !timestampStr || !signature) return null;
-    if (action !== 'activate' && action !== 'reject') return null;
-
-    const payload = `${userId}:${productId}:${action}:${nonce}:${timestampStr}`;
-    const expectedSig = crypto.createHmac('sha256', SERVER_SECRET).update(payload).digest('hex');
-    if (crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) {
-      return { userId, productId, action, nonce, timestamp: Number(timestampStr) };
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
 export function generateToken(userId: string): string {
   const payload = `${userId}:${Date.now()}`;
   const signature = crypto.createHmac('sha256', SERVER_SECRET).update(payload).digest('hex');
@@ -757,48 +731,16 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
   const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
   const baseUrl = (process.env.APP_URL || `${protocol}://${host}`).replace(/\/$/, '');
 
-  // Generate Single-Use Cryptographic Action Tokens (7 days expiration)
-  const activateToken = createActionToken(newUser.id, product.id, 'activate');
-  const rejectToken = createActionToken(newUser.id, product.id, 'reject');
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  if (!Array.isArray(db.action_tokens)) db.action_tokens = [];
-  db.action_tokens.push({
-    id: `tok_${Date.now()}_1`,
-    token: activateToken,
-    user_id: newUser.id,
-    product_id: product.id,
-    action: 'activate',
-    created_at: now.toISOString(),
-    expires_at: expiresAt,
-    used: false,
-    used_at: null
-  });
-  db.action_tokens.push({
-    id: `tok_${Date.now()}_2`,
-    token: rejectToken,
-    user_id: newUser.id,
-    product_id: product.id,
-    action: 'reject',
-    created_at: now.toISOString(),
-    expires_at: expiresAt,
-    used: false,
-    used_at: null
-  });
-
-  const activateUrl = `${baseUrl}/api/license/action?token=${activateToken}`;
-  const rejectUrl = `${baseUrl}/api/license/action?token=${rejectToken}`;
-
-  const subject = `Nueva solicitud de acceso — Dividí Mesa`;
-  const textBody = `Se registró un nuevo usuario y está esperando aprobación.\n\n` +
+  const subject = `NUEVA SOLICITUD DE ACCESO — DIVIDÍ MESA`;
+  const textBody = `NUEVA SOLICITUD DE ACCESO — DIVIDÍ MESA\n\n` +
     `Nombre:\n${newUser.name}\n\n` +
     `Email:\n${newUser.email}\n\n` +
     `Producto:\nDividí Mesa\n\n` +
-    `Estado:\nPENDING\n\n` +
+    `Estado:\nPendiente\n\n` +
     `Fecha:\n${dateFormatted}\n\n` +
     `ID de usuario:\n${newUser.id}\n\n` +
-    `[ ACTIVAR ACCESO ]:\n${activateUrl}\n\n` +
-    `[ RECHAZAR ACCESO ]:\n${rejectUrl}`;
+    `El cliente está esperando verificación de pago y activación.\n` +
+    `Podés activar su acceso desde el Panel de Licencias de Dividí Mesa en:\n${baseUrl}`;
 
   const htmlBody = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; border-radius: 16px; overflow: hidden; border: 1px solid #334155; padding: 24px;">
@@ -806,8 +748,8 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
         <div style="display: inline-block; background: linear-gradient(135deg, #10b981, #14b8a6); color: #022c22; font-weight: 900; font-size: 15px; padding: 6px 14px; border-radius: 12px; margin-bottom: 10px;">
           Dividí Mesa
         </div>
-        <h2 style="color: #ffffff; font-size: 20px; font-weight: 800; margin: 0;">Nueva solicitud de acceso — Dividí Mesa</h2>
-        <p style="color: #94a3b8; font-size: 13px; margin: 6px 0 0 0;">Se registró un nuevo usuario y está esperando aprobación.</p>
+        <h2 style="color: #ffffff; font-size: 20px; font-weight: 800; margin: 0;">NUEVA SOLICITUD DE ACCESO — DIVIDÍ MESA</h2>
+        <p style="color: #94a3b8; font-size: 13px; margin: 6px 0 0 0;">Se registró un nuevo usuario y está esperando verificación de pago.</p>
       </div>
 
       <div style="background-color: #1e293b; border-radius: 12px; padding: 18px; margin-bottom: 24px; border: 1px solid #334155;">
@@ -826,7 +768,7 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
           </tr>
           <tr>
             <td style="color: #94a3b8; padding: 6px 0; font-weight: 600;">Estado:</td>
-            <td style="color: #fbbf24; padding: 6px 0; font-weight: bold; text-align: right;">PENDING</td>
+            <td style="color: #fbbf24; padding: 6px 0; font-weight: bold; text-align: right;">Pendiente</td>
           </tr>
           <tr>
             <td style="color: #94a3b8; padding: 6px 0; font-weight: 600;">Fecha:</td>
@@ -839,22 +781,14 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
         </table>
       </div>
 
-      <!-- BOTÓN PRINCIPAL: ACTIVAR ACCESO -->
-      <div style="text-align: center; margin-bottom: 14px;">
-        <a href="${activateUrl}" target="_blank" style="display: block; background-color: #10b981; color: #ffffff; text-decoration: none; font-weight: 900; font-size: 15px; padding: 14px 24px; border-radius: 12px; text-align: center; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);">
-          [ ACTIVAR ACCESO ]
-        </a>
-      </div>
-
-      <!-- BOTÓN SECUNDARIO: RECHAZAR ACCESO -->
       <div style="text-align: center; margin-bottom: 24px;">
-        <a href="${rejectUrl}" target="_blank" style="display: inline-block; background-color: #1e293b; color: #f87171; text-decoration: none; font-weight: 700; font-size: 13px; padding: 10px 20px; border-radius: 8px; text-align: center; border: 1px solid #475569;">
-          [ RECHAZAR ACCESO ]
+        <a href="${baseUrl}" target="_blank" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; font-weight: 900; font-size: 15px; padding: 14px 28px; border-radius: 12px; text-align: center; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);">
+          ABRIR PANEL DE LICENCIAS
         </a>
       </div>
 
       <div style="border-top: 1px solid #334155; padding-top: 16px; font-size: 11px; color: #64748b; text-align: center;">
-        Este enlace criptográfico es de un solo uso y exclusivo para el Administrador de AI Quantum Studio.
+        Podés verificar el pago y activar el acceso del cliente con un solo clic desde el panel de control de Dividí Mesa.
       </div>
     </div>
   `;
@@ -1016,7 +950,10 @@ apiRouter.post('/admin/update-license', authenticate, requireAdmin, async (req: 
 
   const db = await getDatabase();
   const targetUser = db.users.find(u => u.id === targetUserId);
-  if (targetUser?.is_demo) {
+  if (!targetUser) {
+    return res.status(404).json({ error: 'Usuario no encontrado' });
+  }
+  if (targetUser.is_demo) {
     return res.status(400).json({ error: 'La cuenta demo de exhibición no se modifica' });
   }
 
@@ -1027,28 +964,102 @@ apiRouter.post('/admin/update-license', authenticate, requireAdmin, async (req: 
     up => up.user_id === targetUserId && up.product_id === product.id
   );
 
+  const nowIso = new Date().toISOString();
+
   if (!license) {
     license = {
       id: `lic_${Date.now()}`,
       user_id: targetUserId,
       product_id: product.id,
       status: newStatus,
-      activated_at: newStatus === 'active' ? new Date().toISOString() : null
+      activated_at: newStatus === 'active' ? nowIso : null
     };
     db.user_products.push(license);
   } else {
     license.status = newStatus;
-    if (newStatus === 'active' && !license.activated_at) {
-      license.activated_at = new Date().toISOString();
+    if (newStatus === 'active') {
+      license.activated_at = nowIso;
     } else if (newStatus === 'revoked') {
       license.activated_at = null;
     }
   }
 
-  // Create audit notification for license change
+  let emailSent = false;
+  let emailError: string | undefined;
+
+  // 1. Si se activa al cliente -> Enviar automáticamente email de bienvenida con botón directo
+  if (targetUser && newStatus === 'active') {
+    const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+    const baseUrl = (process.env.APP_URL || `${protocol}://${host}`).replace(/\/$/, '');
+
+    const clientSubject = 'Tu acceso a Dividí Mesa fue activado';
+    const clientText = `Hola ${targetUser.name},\n\nTu acceso a Dividí Mesa fue activado.\n\nEmail de acceso: ${targetUser.email}\n\nYa podés ingresar a la aplicación con tu correo y la contraseña que elegiste al registrarte en:\n${baseUrl}\n\nDividí Mesa • AI Quantum Studio`;
+
+    const clientHtml = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; border-radius: 16px; overflow: hidden; border: 1px solid #334155; padding: 28px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-block; background: linear-gradient(135deg, #10b981, #14b8a6); color: #022c22; font-weight: 900; font-size: 15px; padding: 6px 16px; border-radius: 12px; margin-bottom: 12px;">
+            Dividí Mesa
+          </div>
+          <h2 style="color: #ffffff; font-size: 22px; font-weight: 800; margin: 0;">Tu acceso a Dividí Mesa fue activado</h2>
+          <p style="color: #94a3b8; font-size: 14px; margin: 6px 0 0 0;">Tu cuenta ya está lista para usarse.</p>
+        </div>
+
+        <div style="background-color: #1e293b; border-radius: 12px; padding: 18px; margin-bottom: 24px; border: 1px solid #334155;">
+          <p style="margin: 0 0 8px 0; font-size: 14px; color: #e2e8f0;">Hola <strong>${targetUser.name}</strong>,</p>
+          <p style="margin: 0 0 12px 0; font-size: 13px; color: #94a3b8; line-height: 1.5;">
+            Tu acceso a <strong>Dividí Mesa</strong> ya fue habilitado. Podés ingresar directamente con tus datos de registro:
+          </p>
+          <div style="background-color: #0f172a; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #38bdf8; font-family: monospace;">
+            Email de acceso: <strong>${targetUser.email}</strong>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 24px;">
+          <a href="${baseUrl}" target="_blank" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; font-weight: 900; font-size: 15px; padding: 14px 28px; border-radius: 12px; text-align: center; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);">
+            ACCEDER A DIVIDÍ MESA
+          </a>
+        </div>
+
+        <div style="border-top: 1px solid #334155; padding-top: 16px; font-size: 12px; color: #64748b; text-align: center; line-height: 1.5;">
+          Ingresá con tu correo y la contraseña que elegiste al registrarte.<br/>
+          Dividí Mesa • AI Quantum Studio
+        </div>
+      </div>
+    `;
+
+    const emailRes = await sendEmail({
+      to: targetUser.email,
+      subject: clientSubject,
+      html: clientHtml,
+      text: clientText
+    });
+
+    emailSent = emailRes.success;
+    emailError = emailRes.error;
+  }
+
+  // 2. Si se revoca -> Enviar notificación al cliente
+  if (targetUser && newStatus === 'revoked') {
+    const clientSubject = 'Aviso sobre tu acceso a Dividí Mesa';
+    const clientText = `Hola ${targetUser.name},\n\nTe informamos que tu acceso a Dividí Mesa ha sido revocado o suspendido.\n\nSi creés que esto es un error, por favor contactanos a aiquantumstudio@gmail.com.\n\nAI Quantum Studio`;
+
+    await sendEmail({
+      to: targetUser.email,
+      subject: clientSubject,
+      text: clientText
+    });
+  }
+
+  // 3. Auditoría administrativa interna
   if (targetUser && (newStatus === 'active' || newStatus === 'revoked')) {
     const actionType = newStatus === 'active' ? 'LICENSE_ACTIVATED' : 'LICENSE_REVOKED';
     const actionLabel = newStatus === 'active' ? 'Activada' : 'Revocada';
+    const emailNotice = newStatus === 'active'
+      ? (emailSent ? ' (Email enviado al cliente)' : ` (Aviso: Email no enviado: ${emailError || 'Sin API key'})`)
+      : '';
+
     const auditNotif: DbAdminNotification = {
       id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       type: actionType,
@@ -1058,16 +1069,24 @@ apiRouter.post('/admin/update-license', authenticate, requireAdmin, async (req: 
       product_slug: product.slug,
       status: newStatus,
       recipient: PRIMARY_ADMIN_EMAIL,
-      created_at: new Date().toISOString(),
+      created_at: nowIso,
       read: false,
       subject: `[Licencia ${actionLabel}] ${targetUser.name} (${product.name})`,
-      body: `La licencia del producto ${product.name} para el usuario ${targetUser.name} (${targetUser.email}) fue cambiada a estado ${newStatus.toUpperCase()}.`
+      body: `La licencia para ${targetUser.name} (${targetUser.email}) fue cambiada a ${newStatus.toUpperCase()}.${emailNotice}`
     };
     db.notifications.unshift(auditNotif);
   }
 
   await saveDatabase(db);
-  res.json({ message: `Licencia actualizada a: ${newStatus}`, license });
+
+  res.json({
+    message: newStatus === 'active'
+      ? (emailSent ? `Acceso activado y email enviado a ${targetUser.email}` : `Acceso activado`)
+      : `Licencia cambiada a: ${newStatus}`,
+    license,
+    emailSent,
+    emailError
+  });
 });
 
 // 9. ADMIN NOTIFICATIONS
@@ -1086,271 +1105,3 @@ apiRouter.post('/admin/notifications/:id/read', authenticate, requireAdmin, asyn
   }
   res.json({ success: true });
 });
-
-// 11. DIRECT EMAIL ACTIVATION / REJECTION (Single-Use Secure Cryptographic Tokens)
-const handleLicenseAction = async (req: Request, res: Response) => {
-  const tokenParam = String(req.query.token || req.body?.token || '').trim();
-  const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
-  const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
-  const baseUrl = (process.env.APP_URL || `${protocol}://${host}`).replace(/\/$/, '');
-
-  const wantsJson = req.xhr || req.headers.accept?.includes('application/json');
-
-  if (!tokenParam) {
-    if (wantsJson) return res.status(400).json({ error: 'Token no proporcionado' });
-    return res.status(400).send(renderActionHtml({
-      title: 'Enlace no válido • Dividí Mesa',
-      icon: '❌',
-      headline: 'Enlace de activación inválido',
-      message: 'No se ha proporcionado un token de seguridad válido para procesar esta solicitud.',
-      themeColor: '#ef4444',
-      appUrl: baseUrl
-    }));
-  }
-
-  // 1. Verify Cryptographic HMAC Signature
-  const sigData = verifyActionTokenSignature(tokenParam);
-  if (!sigData) {
-    if (wantsJson) return res.status(400).json({ error: 'Firma criptográfica inválida' });
-    return res.status(400).send(renderActionHtml({
-      title: 'Firma no válida • Dividí Mesa',
-      icon: '🔒',
-      headline: 'Firma de seguridad no válida',
-      message: 'La firma criptográfica del enlace no es auténtica o fue alterada.',
-      themeColor: '#ef4444',
-      appUrl: baseUrl
-    }));
-  }
-
-  const db = await getDatabase();
-  if (!Array.isArray(db.action_tokens)) db.action_tokens = [];
-
-  const tokenRecord = db.action_tokens.find(t => t.token === tokenParam);
-
-  // 2. Check if token exists and single-use status
-  if (!tokenRecord || tokenRecord.used) {
-    if (wantsJson) return res.status(409).json({ error: 'El enlace ya fue utilizado o no es válido' });
-    return res.status(409).send(renderActionHtml({
-      title: 'Enlace ya utilizado • Dividí Mesa',
-      icon: '⚠️',
-      headline: 'Enlace no válido o ya utilizado',
-      message: 'Esta solicitud de acceso ya fue procesada anteriormente o el token ha expirado. Por seguridad, cada enlace es de un solo uso.',
-      themeColor: '#f59e0b',
-      appUrl: baseUrl
-    }));
-  }
-
-  // 3. Expiration Check (7 days)
-  if (new Date() > new Date(tokenRecord.expires_at)) {
-    if (wantsJson) return res.status(410).json({ error: 'El enlace ha expirado' });
-    return res.status(410).send(renderActionHtml({
-      title: 'Enlace expirado • Dividí Mesa',
-      icon: '⏳',
-      headline: 'El enlace de activación ha expirado',
-      message: 'Han transcurrido más de 7 días desde la generación de esta solicitud. El administrador puede gestionarla desde el panel interno de Licencias.',
-      themeColor: '#f59e0b',
-      appUrl: baseUrl
-    }));
-  }
-
-  // 4. User and Product Lookup
-  const targetUser = db.users.find(u => u.id === tokenRecord.user_id);
-  if (!targetUser) {
-    if (wantsJson) return res.status(404).json({ error: 'Usuario no encontrado' });
-    return res.status(404).send(renderActionHtml({
-      title: 'Usuario no encontrado • Dividí Mesa',
-      icon: '❓',
-      headline: 'Usuario no encontrado',
-      message: 'No se encontró la cuenta de usuario asociada a este token.',
-      themeColor: '#ef4444',
-      appUrl: baseUrl
-    }));
-  }
-
-  const product = db.products.find(p => p.id === tokenRecord.product_id) || {
-    id: 'prod_dividi_mesa',
-    name: 'Dividí Mesa',
-    slug: 'dividi-mesa'
-  };
-
-  let license = db.user_products.find(
-    up => up.user_id === targetUser.id && up.product_id === product.id
-  );
-
-  if (!license) {
-    license = {
-      id: `lic_${Date.now()}`,
-      user_id: targetUser.id,
-      product_id: product.id,
-      status: 'pending',
-      activated_at: null
-    };
-    db.user_products.push(license);
-  }
-
-  const nowIso = new Date().toISOString();
-
-  // 5. PROCESS ACTIVATION
-  if (tokenRecord.action === 'activate') {
-    // If user is already active, acknowledge without duplicate actions
-    if (license.status === 'active') {
-      tokenRecord.used = true;
-      tokenRecord.used_at = nowIso;
-      await saveDatabase(db);
-      if (wantsJson) return res.json({ message: 'El usuario ya se encuentra activo', status: 'active' });
-      return res.send(renderActionHtml({
-        title: 'Usuario ya activo • Dividí Mesa',
-        icon: 'ℹ️',
-        headline: 'El usuario ya se encuentra activo',
-        message: `El acceso para ${targetUser.name} (${targetUser.email}) ya había sido habilitado previamente.`,
-        themeColor: '#10b981',
-        user: targetUser,
-        productName: product.name,
-        actionStatus: 'ACTIVO',
-        appUrl: baseUrl
-      }));
-    }
-
-    // Change status from pending to active
-    license.status = 'active';
-    license.activated_at = nowIso;
-
-    // Immediately invalidate this token and all other pending action tokens for this user
-    tokenRecord.used = true;
-    tokenRecord.used_at = nowIso;
-    db.action_tokens.forEach(t => {
-      if (t.user_id === targetUser.id && !t.used) {
-        t.used = true;
-        t.used_at = nowIso;
-      }
-    });
-
-    // Mark corresponding notification as read/processed
-    db.notifications.forEach(n => {
-      if (n.user_email.toLowerCase() === targetUser.email.toLowerCase()) {
-        n.read = true;
-      }
-    });
-
-    // Create LICENSE_ACTIVATED event
-    const auditNotif: DbAdminNotification = {
-      id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      type: 'LICENSE_ACTIVATED',
-      user_name: targetUser.name,
-      user_email: targetUser.email,
-      product_name: product.name,
-      product_slug: product.slug,
-      status: 'active',
-      recipient: PRIMARY_ADMIN_EMAIL,
-      created_at: nowIso,
-      read: true,
-      subject: `[Licencia Activada desde Email] ${targetUser.name} (${product.name})`,
-      body: `El acceso para ${targetUser.name} (${targetUser.email}) fue activado directamente por el Administrador desde el correo electrónico de notificación.`
-    };
-    db.notifications.unshift(auditNotif);
-    await saveDatabase(db);
-
-    // Send confirmation email to client
-    const clientSubject = '✅ Tu acceso a Dividí Mesa fue activado';
-    const clientHtml = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 540px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; border-radius: 16px; overflow: hidden; border: 1px solid #334155; padding: 28px;">
-        <div style="text-align: center; margin-bottom: 24px;">
-          <div style="display: inline-block; background: linear-gradient(135deg, #10b981, #14b8a6); color: #022c22; font-weight: 900; font-size: 15px; padding: 6px 14px; border-radius: 12px; margin-bottom: 12px;">
-            Dividí Mesa
-          </div>
-          <h2 style="color: #ffffff; font-size: 22px; font-weight: 800; margin: 0;">¡Acceso Activado!</h2>
-        </div>
-        <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6;">Hola <strong>${targetUser.name}</strong>,</p>
-        <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6;">Tu acceso a <strong>Dividí Mesa</strong> ya fue activado.</p>
-        <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6;">Ya podés ingresar a la aplicación con tu correo (<strong>${targetUser.email}</strong>) y tu contraseña.</p>
-        <div style="text-align: center; margin: 28px 0;">
-          <a href="${baseUrl}" target="_blank" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; font-weight: 900; font-size: 15px; padding: 14px 28px; border-radius: 12px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);">
-            ACCEDER A DIVIDÍ MESA
-          </a>
-        </div>
-        <div style="border-top: 1px solid #334155; padding-top: 18px; font-size: 12px; color: #64748b; text-align: center;">
-          Por seguridad, nunca compartas tus credenciales de acceso.<br/>
-          Dividí Mesa • AI Quantum Studio
-        </div>
-      </div>
-    `;
-    const clientText = `Hola ${targetUser.name},\n\nTu acceso a Dividí Mesa ya fue activado.\n\nYa podés ingresar a la aplicación en:\n${baseUrl}\n\nDividí Mesa • AI Quantum Studio`;
-
-    await sendEmail({
-      to: targetUser.email,
-      subject: clientSubject,
-      html: clientHtml,
-      text: clientText
-    });
-
-    if (wantsJson) return res.json({ message: 'Acceso activado con éxito', status: 'active', user: targetUser });
-
-    return res.send(renderActionHtml({
-      title: '¡Acceso Activado! • Dividí Mesa',
-      icon: '✅',
-      headline: '¡Acceso Activado Exitosamente!',
-      message: `El usuario ${targetUser.name} (${targetUser.email}) ahora tiene acceso completo a Dividí Mesa. Se le ha enviado un correo electrónico notificando la activación.`,
-      themeColor: '#10b981',
-      user: targetUser,
-      productName: product.name,
-      actionStatus: 'ACTIVO',
-      appUrl: baseUrl
-    }));
-  }
-
-  // 6. PROCESS REJECTION
-  if (tokenRecord.action === 'reject') {
-    license.status = 'revoked';
-    tokenRecord.used = true;
-    tokenRecord.used_at = nowIso;
-    db.action_tokens.forEach(t => {
-      if (t.user_id === targetUser.id && !t.used) {
-        t.used = true;
-        t.used_at = nowIso;
-      }
-    });
-
-    const auditNotif: DbAdminNotification = {
-      id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      type: 'LICENSE_REVOKED',
-      user_name: targetUser.name,
-      user_email: targetUser.email,
-      product_name: product.name,
-      product_slug: product.slug,
-      status: 'revoked',
-      recipient: PRIMARY_ADMIN_EMAIL,
-      created_at: nowIso,
-      read: true,
-      subject: `[Solicitud Rechazada desde Email] ${targetUser.name} (${product.name})`,
-      body: `La solicitud de acceso para ${targetUser.name} (${targetUser.email}) fue rechazada por el Administrador desde el correo electrónico.`
-    };
-    db.notifications.unshift(auditNotif);
-    await saveDatabase(db);
-
-    const clientSubject = 'Aviso sobre tu solicitud de acceso a Dividí Mesa';
-    const clientText = `Hola ${targetUser.name},\n\nTe informamos que tu solicitud de acceso a Dividí Mesa no pudo ser aprobada en este momento.\n\nSi creés que esto es un error, podés contactarnos a aiquantumstudio@gmail.com.\n\nAI Quantum Studio`;
-
-    await sendEmail({
-      to: targetUser.email,
-      subject: clientSubject,
-      text: clientText
-    });
-
-    if (wantsJson) return res.json({ message: 'Solicitud rechazada', status: 'revoked', user: targetUser });
-
-    return res.send(renderActionHtml({
-      title: 'Solicitud Rechazada • Dividí Mesa',
-      icon: '🔴',
-      headline: 'Solicitud Rechazada',
-      message: `La solicitud de acceso para ${targetUser.name} (${targetUser.email}) fue rechazada. El usuario ha sido notificado.`,
-      themeColor: '#ef4444',
-      user: targetUser,
-      productName: product.name,
-      actionStatus: 'REVOCADO',
-      appUrl: baseUrl
-    }));
-  }
-};
-
-apiRouter.get('/license/action', handleLicenseAction);
-apiRouter.post('/license/action', handleLicenseAction);

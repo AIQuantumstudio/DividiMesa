@@ -201,7 +201,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
             ) : (
               <>
                 <PlayCircle className="w-4 h-4" />
-                <span>PROBAR DEMOSTRACIÓN</span>
+                <span>PROBAR DIVIDÍ MESA</span>
               </>
             )}
           </button>

@@ -563,18 +563,20 @@ export const authService = {
   },
 
   // 8. ADMIN UPDATE LICENSE
-  async updateLicense(targetUserId: string, newStatus: 'pending' | 'active' | 'revoked'): Promise<{ message: string; license: UserProduct }> {
+  async updateLicense(targetUserId: string, newStatus: 'pending' | 'active' | 'revoked'): Promise<{ message: string; license: UserProduct; emailSent?: boolean; emailError?: string }> {
     // 1. Try server
     try {
-      const serverRes = await tryServerRequest<{ message: string; license: UserProduct }>('/api/admin/update-license', {
+      const serverRes = await tryServerRequest<{ message: string; license: UserProduct; emailSent?: boolean; emailError?: string }>('/api/admin/update-license', {
         method: 'POST',
         body: JSON.stringify({ targetUserId, newStatus })
       });
       if (serverRes) {
         return serverRes;
       }
-    } catch {
-      // ignore
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch') && !err.message.includes('servidor')) {
+        throw err;
+      }
     }
 
     // 2. Client Fallback
