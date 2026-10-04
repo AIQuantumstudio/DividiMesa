@@ -308,6 +308,13 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+export interface EmailSendResult {
+  success: boolean;
+  id?: string;
+  error?: string;
+  statusCode?: number;
+}
+
 export async function sendEmail({
   to,
   subject,
@@ -318,51 +325,63 @@ export async function sendEmail({
   subject: string;
   html?: string;
   text?: string;
-}): Promise<boolean> {
-  // 1. Resend API ($0 Free Tier, 3000 emails/mo, no card required)
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          from: process.env.EMAIL_FROM || 'Dividí Mesa <onboarding@resend.dev>',
-          to,
-          subject,
-          html,
-          text
-        })
-      });
-      if (res.ok) {
-        console.log(`[Email] Notification sent successfully to ${to}`);
-        return true;
-      } else {
-        const err = await res.json().catch(() => ({}));
-        console.warn('[Email] Resend API error:', err);
-      }
-    } catch (err) {
-      console.warn('[Email] Network error sending email:', err);
-    }
+}): Promise<EmailSendResult> {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+
+  // CORRECCIÓN 3 — VERIFICACIÓN DE VARIABLE DE ENTORNO
+  if (!apiKey) {
+    console.error('[Email Error] RESEND_API_KEY no configurada en el entorno de producción.');
+    return {
+      success: false,
+      error: 'RESEND_API_KEY no configurada en el entorno de producción.'
+    };
   }
 
-  // 2. Webhook notification (Optional free webhook dispatch)
-  if (process.env.NOTIFICATION_WEBHOOK_URL) {
-    try {
-      await fetch(process.env.NOTIFICATION_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, html, text })
-      });
-      return true;
-    } catch (err) {
-      console.warn('[Webhook] Dispatch error:', err);
-    }
-  }
+  // CORRECCIÓN 4 — EMAIL_FROM
+  const fromEmail = process.env.EMAIL_FROM || 'Dividí Mesa <onboarding@resend.dev>';
 
-  return false;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to,
+        subject,
+        html,
+        text
+      })
+    });
+
+    const resData: any = await res.json().catch(() => ({}));
+
+    if (res.ok) {
+      console.log(`[Email Éxito] Correo enviado y aceptado por Resend para ${to}. ID: ${resData.id || 'N/A'}`);
+      return {
+        success: true,
+        id: resData.id,
+        statusCode: res.status
+      };
+    } else {
+      // Registrar en el log de Netlify: código de error, mensaje de error, respuesta del proveedor (sin exponer la key)
+      const errorMsg = resData.message || resData.error || `HTTP error ${res.status}`;
+      console.error(`[Email Error Resend] Código HTTP: ${res.status} | Mensaje: ${errorMsg} | Respuesta:`, JSON.stringify(resData));
+      return {
+        success: false,
+        statusCode: res.status,
+        error: errorMsg
+      };
+    }
+  } catch (netErr: any) {
+    console.error('[Email Error Red] Error de conexión al intentar enviar email a Resend:', netErr.message || netErr);
+    return {
+      success: false,
+      error: netErr.message || 'Error de red con el proveedor de correo'
+    };
+  }
 }
 
 function renderActionHtml({
@@ -705,16 +724,16 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
   const activateUrl = `${baseUrl}/api/license/action?token=${activateToken}`;
   const rejectUrl = `${baseUrl}/api/license/action?token=${rejectToken}`;
 
-  const subject = `🔔 Solicitud de acceso — Dividí Mesa`;
-  const textBody = `NUEVA SOLICITUD DE ACCESO\n\n` +
+  const subject = `Nueva solicitud de acceso — Dividí Mesa`;
+  const textBody = `Se registró un nuevo usuario y está esperando aprobación.\n\n` +
     `Nombre:\n${newUser.name}\n\n` +
     `Email:\n${newUser.email}\n\n` +
     `Producto:\nDividí Mesa\n\n` +
-    `Estado:\nPENDIENTE\n\n` +
+    `Estado:\nPENDING\n\n` +
     `Fecha:\n${dateFormatted}\n\n` +
-    `🟢 ACTIVAR ACCESO DIRECTO:\n${activateUrl}\n\n` +
-    `🔴 RECHAZAR SOLICITUD:\n${rejectUrl}\n\n` +
-    `El usuario está esperando aprobación.`;
+    `ID de usuario:\n${newUser.id}\n\n` +
+    `[ ACTIVAR ACCESO ]:\n${activateUrl}\n\n` +
+    `[ RECHAZAR ACCESO ]:\n${rejectUrl}`;
 
   const htmlBody = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; border-radius: 16px; overflow: hidden; border: 1px solid #334155; padding: 24px;">
@@ -722,8 +741,8 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
         <div style="display: inline-block; background: linear-gradient(135deg, #10b981, #14b8a6); color: #022c22; font-weight: 900; font-size: 15px; padding: 6px 14px; border-radius: 12px; margin-bottom: 10px;">
           Dividí Mesa
         </div>
-        <h2 style="color: #ffffff; font-size: 20px; font-weight: 800; margin: 0;">NUEVA SOLICITUD DE ACCESO</h2>
-        <p style="color: #94a3b8; font-size: 13px; margin: 4px 0 0 0;">AI Quantum Studio • Gestión de Licencias</p>
+        <h2 style="color: #ffffff; font-size: 20px; font-weight: 800; margin: 0;">Nueva solicitud de acceso — Dividí Mesa</h2>
+        <p style="color: #94a3b8; font-size: 13px; margin: 6px 0 0 0;">Se registró un nuevo usuario y está esperando aprobación.</p>
       </div>
 
       <div style="background-color: #1e293b; border-radius: 12px; padding: 18px; margin-bottom: 24px; border: 1px solid #334155;">
@@ -742,11 +761,15 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
           </tr>
           <tr>
             <td style="color: #94a3b8; padding: 6px 0; font-weight: 600;">Estado:</td>
-            <td style="color: #fbbf24; padding: 6px 0; font-weight: bold; text-align: right;">PENDIENTE</td>
+            <td style="color: #fbbf24; padding: 6px 0; font-weight: bold; text-align: right;">PENDING</td>
           </tr>
           <tr>
             <td style="color: #94a3b8; padding: 6px 0; font-weight: 600;">Fecha:</td>
             <td style="color: #94a3b8; padding: 6px 0; font-size: 12px; text-align: right;">${dateFormatted}</td>
+          </tr>
+          <tr>
+            <td style="color: #94a3b8; padding: 6px 0; font-weight: 600;">ID de usuario:</td>
+            <td style="color: #94a3b8; padding: 6px 0; font-size: 11px; text-align: right; font-family: monospace;">${newUser.id}</td>
           </tr>
         </table>
       </div>
@@ -754,14 +777,14 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
       <!-- BOTÓN PRINCIPAL: ACTIVAR ACCESO -->
       <div style="text-align: center; margin-bottom: 14px;">
         <a href="${activateUrl}" target="_blank" style="display: block; background-color: #10b981; color: #ffffff; text-decoration: none; font-weight: 900; font-size: 15px; padding: 14px 24px; border-radius: 12px; text-align: center; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);">
-          🟢 ACTIVAR ACCESO
+          [ ACTIVAR ACCESO ]
         </a>
       </div>
 
-      <!-- BOTÓN SECUNDARIO: RECHAZAR SOLICITUD -->
+      <!-- BOTÓN SECUNDARIO: RECHAZAR ACCESO -->
       <div style="text-align: center; margin-bottom: 24px;">
-        <a href="${rejectUrl}" target="_blank" style="display: inline-block; background-color: #1e293b; color: #f87171; text-decoration: none; font-weight: 700; font-size: 12px; padding: 8px 18px; border-radius: 8px; text-align: center; border: 1px solid #475569;">
-          🔴 RECHAZAR SOLICITUD
+        <a href="${rejectUrl}" target="_blank" style="display: inline-block; background-color: #1e293b; color: #f87171; text-decoration: none; font-weight: 700; font-size: 13px; padding: 10px 20px; border-radius: 8px; text-align: center; border: 1px solid #475569;">
+          [ RECHAZAR ACCESO ]
         </a>
       </div>
 
@@ -788,15 +811,19 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
   db.notifications.unshift(notif);
   await saveDatabase(db);
 
-  // Dispatch email notification asynchronously
-  sendEmail({
+  // CORRECCIÓN 2 — ESPERAR EL ENVÍO DEL EMAIL (CRÍTICO PARA SERVERLESS)
+  const emailResult = await sendEmail({
     to: PRIMARY_ADMIN_EMAIL,
     subject,
     html: htmlBody,
     text: textBody
-  }).catch(err => {
-    console.warn('[Email] Dispatch non-fatal error:', err);
   });
+
+  if (emailResult.success) {
+    console.log(`[Registro] Email enviado exitosamente a ${PRIMARY_ADMIN_EMAIL}. ID Resend: ${emailResult.id || 'N/A'}`);
+  } else {
+    console.warn(`[Registro Alerta] Envío de email no concretado a ${PRIMARY_ADMIN_EMAIL}: ${emailResult.error || 'Desconocido'}`);
+  }
 
   const token = generateToken(newUser.id);
   const safeUser = {
@@ -1184,13 +1211,11 @@ const handleLicenseAction = async (req: Request, res: Response) => {
     `;
     const clientText = `Hola ${targetUser.name},\n\nTu acceso a Dividí Mesa ya fue activado.\n\nYa podés ingresar a la aplicación en:\n${baseUrl}\n\nDividí Mesa • AI Quantum Studio`;
 
-    sendEmail({
+    await sendEmail({
       to: targetUser.email,
       subject: clientSubject,
       html: clientHtml,
       text: clientText
-    }).catch(err => {
-      console.warn('[Email] Error sending client activation notice:', err);
     });
 
     if (wantsJson) return res.json({ message: 'Acceso activado con éxito', status: 'active', user: targetUser });
@@ -1240,11 +1265,11 @@ const handleLicenseAction = async (req: Request, res: Response) => {
     const clientSubject = 'Aviso sobre tu solicitud de acceso a Dividí Mesa';
     const clientText = `Hola ${targetUser.name},\n\nTe informamos que tu solicitud de acceso a Dividí Mesa no pudo ser aprobada en este momento.\n\nSi creés que esto es un error, podés contactarnos a aiquantumstudio@gmail.com.\n\nAI Quantum Studio`;
 
-    sendEmail({
+    await sendEmail({
       to: targetUser.email,
       subject: clientSubject,
       text: clientText
-    }).catch(err => console.warn(err));
+    });
 
     if (wantsJson) return res.json({ message: 'Solicitud rechazada', status: 'revoked', user: targetUser });
 

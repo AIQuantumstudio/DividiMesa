@@ -4,6 +4,9 @@ import { apiRouter } from '../../src/server/api.ts';
 
 const app = express();
 
+// Parse JSON bodies in Netlify Serverless Functions
+app.use(express.json());
+
 app.use((req, _res, next) => {
   if (req.url.startsWith('/.netlify/functions/api')) {
     req.url = req.url.replace('/.netlify/functions/api', '');
