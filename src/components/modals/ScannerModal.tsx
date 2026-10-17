@@ -892,7 +892,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-xs text-slate-300">
               <p className="font-bold text-slate-100">Texto detectado:</p>
               <p className="text-[11px] text-slate-400">
-                Podés corregir o pegar el texto de los platos (ej: 2 Agua Mineral 7400 \n Unit: 3700) y tocar Interpretar platos.
+                Podés corregir o pegar el texto de los platos (ej: 1 Bife de chorizo 18500 o 2 Gaseosa 3600 \n Unit: 1800) y tocar Interpretar platos.
               </p>
             </div>
 
@@ -900,7 +900,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               rows={6}
               value={rawOcrText}
               onChange={e => setRawOcrText(e.target.value)}
-              placeholder="2 AGUA MINERAL 7400,00&#10;Unit: 3700,00&#10;1 Parrillada Promo 24900,00"
+              placeholder="1 Bife de chorizo 18500&#10;2 Gaseosa 3600,00&#10;Unit: 1800,00"
               className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-mono text-emerald-400 focus:outline-none focus:border-emerald-500"
             />
 

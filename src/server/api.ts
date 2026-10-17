@@ -1141,7 +1141,7 @@ ${ocrText ? `Texto OCR preliminar como referencia:\n${ocrText}\n` : ''}
 
 REGLAS OBLIGATORIAS:
 1. Extraé CADA producto con:
-   - nombre_producto: Nombre limpio del plato o bebida (ej: "SERVICIO DE MESA", "AGUA MINERAL", "EMPANADAS DE CARNE", "Parrillada Promo", "ENSALADA RUCULA PARMES").
+   - nombre_producto: Nombre limpio del plato o bebida (ej: "Bife de chorizo", "Agua mineral", "Papas fritas", "Servicio de mesa").
    - cantidad: Cantidad numérica (entero >= 1).
    - precio_unitario_ars: Precio unitario individual por cada porción/unidad en pesos argentinos (ARS).
    - importe_linea_ars: Importe total cobrado en esa línea en pesos argentinos (ARS).
@@ -1151,9 +1151,9 @@ REGLAS OBLIGATORIAS:
    - motivo_revision: Explicación breve si requiere revisión.
 
 2. ASOCIACIÓN ESPACIAL DE LÍNEAS:
-   - Si un producto tiene una sublínea indicando "Unit: 2000,00" o "P.Unit" o "x 2000", ese valor ES el precio_unitario_ars del producto anterior.
-   - En ese caso, la línea superior tiene el importe_linea_ars (ej: cantidad 2, importe 4000, sublínea Unit: 2000).
-   - El precio_unitario_ars es $2000 y el importe_linea_ars es $4000.
+   - Si un producto tiene una sublínea indicando "Unit: 1500,00" o "P.Unit" o "x 1500", ese valor ES el precio_unitario_ars del producto anterior.
+   - En ese caso, la línea superior tiene el importe_linea_ars (ej: cantidad 2, importe 3000, sublínea Unit: 1500).
+   - El precio_unitario_ars es $1500 y el importe_linea_ars es $3000.
    - NO confundas precio unitario con importe de línea.
 
 3. FILTRADO:

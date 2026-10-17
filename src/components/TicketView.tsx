@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Users, Utensils } from 'lucide-react';
+import { Plus, Users, Utensils, Camera, Receipt } from 'lucide-react';
 import { Item, Diner, Preset, TableTotals, COLORS } from '../types';
 import { money, fmtU, assignedUnits, partCount } from '../utils/format';
 
@@ -17,6 +17,8 @@ interface TicketViewProps {
   onStepUnits: (itemId: number, delta: number) => void;
   onSetUnits: (itemId: number, value: string | number) => void;
   onLoadPreset: (key: string) => void;
+  onOpenScanner?: () => void;
+  onOpenAddItem?: () => void;
 }
 
 export const TicketView: React.FC<TicketViewProps> = ({
@@ -32,62 +34,96 @@ export const TicketView: React.FC<TicketViewProps> = ({
   onToggleShared,
   onStepUnits,
   onSetUnits,
-  onLoadPreset
+  onLoadPreset,
+  onOpenScanner,
+  onOpenAddItem
 }) => {
   const currentDiner = diners.find(d => d.id === currentDinerId);
 
   return (
     <div className="space-y-3">
-      {/* Total del Ticket Card */}
-      <div className="glass-panel p-3.5 rounded-2xl space-y-2 shadow-lg">
-        <div className="flex justify-between items-baseline border-b border-slate-800 pb-2">
-          <div>
-            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
-              Total del Ticket
-            </span>
-            <h2 className="text-2xl font-black text-white">{money(totals.grand)}</h2>
+      {/* Estado vacío o Total del Ticket Card */}
+      {items.length === 0 ? (
+        <div className="glass-panel p-6 sm:p-7 rounded-2xl text-center space-y-4 shadow-xl border border-dashed border-emerald-500/40 bg-slate-900/60">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/10">
+            <Camera className="w-7 h-7 stroke-[2]" />
           </div>
-          <div className="text-right text-xs text-slate-400 space-y-0.5">
-            <div>
-              Platos: <b className="text-slate-200">{money(totals.sub)}</b>
-            </div>
-            <div>
-              Propina ({tipPercentage}%): <b className="text-slate-200">{money(totals.tip)}</b>
-            </div>
-            <div>
-              Cubierto: <b className="text-slate-200">{money(totals.cover)}</b>
-            </div>
+          <div className="space-y-1.5">
+            <h3 className="font-extrabold text-base text-white tracking-tight">
+              Escaneá un ticket para comenzar
+            </h3>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+              La mesa está limpia y lista. Apuntá la cámara al ticket gastronómico o ingresá los productos manualmente.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-1">
+            {onOpenScanner && (
+              <button
+                type="button"
+                onClick={onOpenScanner}
+                className="w-full sm:w-auto py-3 px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Camera className="w-4 h-4 stroke-[2.5]" />
+                <span>Escanear ticket</span>
+              </button>
+            )}
+            {onOpenAddItem && (
+              <button
+                type="button"
+                onClick={onOpenAddItem}
+                className="w-full sm:w-auto py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 text-emerald-400" />
+                <span>+ Cargar producto manual</span>
+              </button>
+            )}
           </div>
         </div>
-        <p className="text-[11px] text-slate-400 leading-relaxed">
-          Elegí tu nombre arriba. En cada ítem poné cuántas unidades consumiste vos (ej. 4 empanadas),
-          o marcá «Compartido» si se divide entre los que participan (vino, gaseosa).
-        </p>
-      </div>
+      ) : (
+        <div className="glass-panel p-3.5 rounded-2xl space-y-2 shadow-lg">
+          <div className="flex justify-between items-baseline border-b border-slate-800 pb-2">
+            <div>
+              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                Total del Ticket
+              </span>
+              <h2 className="text-2xl font-black text-white">{money(totals.grand)}</h2>
+            </div>
+            <div className="text-right text-xs text-slate-400 space-y-0.5">
+              <div>
+                Platos: <b className="text-slate-200">{money(totals.sub)}</b>
+              </div>
+              <div>
+                Propina ({tipPercentage}%): <b className="text-slate-200">{money(totals.tip)}</b>
+              </div>
+              {totals.cover > 0 && (
+                <div>
+                  Cubierto: <b className="text-slate-200">{money(totals.cover)}</b>
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            Elegí tu nombre arriba. En cada ítem poné cuántas unidades consumiste vos (ej. 1 agua),
+            o marcá «Compartido» si se divide entre los que participan.
+          </p>
+        </div>
+      )}
 
-      {/* Header Detalle */}
-      <div className="flex justify-between items-center px-1">
-        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-          Detalle del Ticket
-        </span>
-        <span className="text-[11px] text-slate-400 font-medium">
-          {items.length} {items.length === 1 ? 'ítem cargado' : 'ítems cargados'}
-        </span>
-      </div>
+      {/* Header Detalle (solo si hay ítems) */}
+      {items.length > 0 && (
+        <div className="flex justify-between items-center px-1">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            Detalle del Ticket
+          </span>
+          <span className="text-[11px] text-slate-400 font-medium">
+            {items.length} {items.length === 1 ? 'ítem cargado' : 'ítems cargados'}
+          </span>
+        </div>
+      )}
 
       {/* Items List */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-        {items.length === 0 ? (
-          <div className="glass-panel p-6 rounded-2xl text-center space-y-3 md:col-span-2">
-            <Utensils className="w-8 h-8 text-slate-600 mx-auto" />
-            <p className="text-xs font-bold text-slate-400">
-              No hay ítems cargados en la mesa todavía.
-            </p>
-            <p className="text-[11px] text-slate-500">
-              El encargado o restaurante debe ingresar con la clave y cargar los pedidos de la mesa.
-            </p>
-          </div>
-        ) : (
+        {items.length === 0 ? null : (
           items.map(it => {
             const isShared = it.mode === 'shared';
             const total = it.lineTotal ?? (it.price * it.qty);
@@ -313,26 +349,28 @@ export const TicketView: React.FC<TicketViewProps> = ({
         )}
       </div>
 
-      {/* Preset menus */}
-      <div className="pt-3 border-t border-slate-800 space-y-2">
-        <p className="text-xs text-slate-300 font-bold flex items-center gap-1.5">
-          <Utensils className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Cartas digitales de ejemplo:</span>
-        </p>
-        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-          {presets.map(p => (
-            <button
-              key={p.key}
-              type="button"
-              onClick={() => onLoadPreset(p.key)}
-              className="bg-slate-900/80 hover:bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap active:scale-95 transition-all flex flex-col text-left cursor-pointer shrink-0"
-            >
-              <span className="text-emerald-400 text-[10px] font-black">{p.title}</span>
-              <span className="text-[10px] text-slate-400">{p.items.length} ítems</span>
-            </button>
-          ))}
+      {/* Preset menus (solo si existen cartas guardadas) */}
+      {presets && presets.length > 0 && (
+        <div className="pt-3 border-t border-slate-800 space-y-2">
+          <p className="text-xs text-slate-300 font-bold flex items-center gap-1.5">
+            <Utensils className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Cartas digitales guardadas:</span>
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+            {presets.map(p => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => onLoadPreset(p.key)}
+                className="bg-slate-900/80 hover:bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap active:scale-95 transition-all flex flex-col text-left cursor-pointer shrink-0"
+              >
+                <span className="text-emerald-400 text-[10px] font-black">{p.title}</span>
+                <span className="text-[10px] text-slate-400">{p.items.length} ítems</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

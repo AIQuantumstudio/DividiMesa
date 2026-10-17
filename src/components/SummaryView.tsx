@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, UserCheck, Crown, HandCoins, Wallet, Copy, Share2 } from 'lucide-react';
+import { Users, UserCheck, Crown, HandCoins, Wallet, Copy, Share2, Camera, Calculator } from 'lucide-react';
 import { Diner, Item, TableTotals, DinerTotals, PaymentMode, COLORS } from '../types';
 import { money, fmtU, partCount } from '../utils/format';
 
@@ -22,6 +22,7 @@ interface SummaryViewProps {
   onTogglePaid: (dinerId: number) => void;
   onCopyAlias: () => void;
   onShareWhatsApp: () => void;
+  onOpenScanner?: () => void;
 }
 
 export const SummaryView: React.FC<SummaryViewProps> = ({
@@ -42,10 +43,40 @@ export const SummaryView: React.FC<SummaryViewProps> = ({
   onDistributeUnassigned,
   onTogglePaid,
   onCopyAlias,
-  onShareWhatsApp
+  onShareWhatsApp,
+  onOpenScanner
 }) => {
   const isSingle = paymentMode === 'single';
   const singlePayer = diners.find(d => d.id === singlePayerId) || null;
+
+  // Si no hay productos en la mesa, mostrar estado limpio sin importes falsos de $0
+  if (items.length === 0) {
+    return (
+      <div className="glass-panel p-6 sm:p-8 rounded-2xl text-center space-y-4 shadow-xl border border-dashed border-slate-800 bg-slate-900/50">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
+          <Calculator className="w-7 h-7 text-slate-400" />
+        </div>
+        <div className="space-y-1.5 max-w-sm mx-auto">
+          <h3 className="font-extrabold text-base text-slate-200">No hay consumos para dividir</h3>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Para ver la división de pagos, los montos por persona y el resumen general, primero escaneá un ticket o cargá los platos de la mesa.
+          </p>
+        </div>
+        {onOpenScanner && (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={onOpenScanner}
+              className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs active:scale-95 transition-all shadow-md inline-flex items-center gap-2 cursor-pointer"
+            >
+              <Camera className="w-4 h-4 stroke-[2.5]" />
+              <span>Escanear ticket</span>
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // Total consumed by all diners registered
   const mesaTotals = diners.reduce(

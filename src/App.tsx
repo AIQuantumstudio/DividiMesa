@@ -107,25 +107,93 @@ export default function App() {
     showToast('Sesión cerrada');
   };
 
-  // App State
+  // Clean table session persistence keys
+  const TABLE_SESSION_KEY = 'dividimesa_active_session_v1';
+  const TABLE_HISTORY_KEY = 'dividimesa_history_sessions_v1';
+
+  // App State - pure clean start without demo products or preloaded prices
+  const initialSession = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('dividimesa_active_session_v1');
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (data && Array.isArray(data.items)) {
+        // Discard any obsolete demo mock items if they were saved in the past
+        const hasDemoItems = data.items.some((it: Item) =>
+          it.name === 'Ojo de Bife Acompañado' || it.name === 'Vino Rutini Malbec 750ml'
+        );
+        if (hasDemoItems) {
+          localStorage.removeItem('dividimesa_active_session_v1');
+          return null;
+        }
+        return data;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }, []);
+
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [adminUnlocked, setAdminUnlocked] = useState<boolean>(false);
-  const [restaurantName, setRestaurantName] = useState<string>('Don Julio Parrilla - Mesa 12');
-  const [collectorAlias, setCollectorAlias] = useState<string>('dividimesa.donjulio.mp');
+  const [restaurantName, setRestaurantName] = useState<string>(
+    initialSession?.restaurantName || 'Mi Mesa'
+  );
+  const [collectorAlias, setCollectorAlias] = useState<string>(
+    initialSession?.collectorAlias || 'dividimesa.mp'
+  );
 
-  const [currentDinerId, setCurrentDinerId] = useState<number | null>(null);
-  const [tipPercentage, setTipPercentage] = useState<number>(10);
-  const [coverCharge, setCoverCharge] = useState<number>(800);
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('individual');
-  const [singlePayerId, setSinglePayerId] = useState<number | null>(null);
+  const [currentDinerId, setCurrentDinerId] = useState<number | null>(
+    initialSession?.currentDinerId || null
+  );
+  const [tipPercentage, setTipPercentage] = useState<number>(
+    initialSession?.tipPercentage ?? 10
+  );
+  const [coverCharge, setCoverCharge] = useState<number>(
+    initialSession?.coverCharge ?? 0
+  );
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>(
+    initialSession?.paymentMode || 'individual'
+  );
+  const [singlePayerId, setSinglePayerId] = useState<number | null>(
+    initialSession?.singlePayerId || null
+  );
 
-  const [diners, setDiners] = useState<Diner[]>([]);
-  const [items, setItems] = useState<Item[]>(() =>
-    JSON.parse(JSON.stringify(INITIAL_PRESETS[0].items))
+  const [diners, setDiners] = useState<Diner[]>(
+    initialSession?.diners || []
+  );
+  const [items, setItems] = useState<Item[]>(
+    initialSession?.items || []
   );
   const [presets, setPresets] = useState<Preset[]>(() =>
     JSON.parse(JSON.stringify(INITIAL_PRESETS))
   );
+
+  // Sync real user active table changes to localStorage
+  useEffect(() => {
+    if (items.length > 0 || diners.length > 0) {
+      try {
+        localStorage.setItem(
+          TABLE_SESSION_KEY,
+          JSON.stringify({
+            restaurantName,
+            collectorAlias,
+            items,
+            diners,
+            currentDinerId,
+            singlePayerId,
+            tipPercentage,
+            coverCharge,
+            paymentMode
+          })
+        );
+      } catch {
+        // ignore
+      }
+    } else {
+      localStorage.removeItem(TABLE_SESSION_KEY);
+    }
+  }, [items, diners, currentDinerId, singlePayerId, restaurantName, collectorAlias, tipPercentage, coverCharge, paymentMode]);
 
   const [activeTab, setActiveTab] = useState<'items' | 'summary'>('items');
 
@@ -329,21 +397,55 @@ export default function App() {
     showToast('Comensal eliminado');
   };
 
-  const handleResetTableSession = () => {
+  const handleNewTable = () => {
     playTapSound();
-    setAskModalState({
-      isOpen: true,
-      type: 'confirm',
-      title: 'Reiniciar mesa',
-      msg: 'Se van a quitar todos los comensales y sus consumos.',
-      onConfirm: () => {
-        setDiners([]);
-        setSinglePayerId(null);
-        setCurrentDinerId(null);
-        setItems(prev => prev.map(it => ({ ...it, shares: {} })));
-        showToast('Mesa reiniciada');
-      }
-    });
+    const hasActiveData = items.length > 0 || diners.length > 0;
+    if (hasActiveData) {
+      setAskModalState({
+        isOpen: true,
+        type: 'confirm',
+        title: 'Nueva mesa',
+        msg: '¿Querés iniciar una nueva cuenta? Se descartarán los productos, comensales y consumos actuales para comenzar desde cero.',
+        onConfirm: () => {
+          // Archive previous session if it contained items
+          if (items.length > 0) {
+            try {
+              const prevHistory = JSON.parse(localStorage.getItem(TABLE_HISTORY_KEY) || '[]');
+              prevHistory.unshift({
+                id: Date.now(),
+                date: new Date().toISOString(),
+                restaurantName,
+                items,
+                diners,
+                total: tableTotals.grand
+              });
+              localStorage.setItem(TABLE_HISTORY_KEY, JSON.stringify(prevHistory.slice(0, 10)));
+            } catch {
+              // ignore
+            }
+          }
+          // Clear current session completely
+          setItems([]);
+          setDiners([]);
+          setCurrentDinerId(null);
+          setSinglePayerId(null);
+          setCoverCharge(0);
+          setRestaurantName('Mi Mesa');
+          setPaymentMode('individual');
+          localStorage.removeItem(TABLE_SESSION_KEY);
+          showToast('Nueva mesa iniciada. Escaneá un ticket para comenzar.');
+        }
+      });
+    } else {
+      setItems([]);
+      setDiners([]);
+      setCurrentDinerId(null);
+      setSinglePayerId(null);
+      setCoverCharge(0);
+      setRestaurantName('Mi Mesa');
+      localStorage.removeItem(TABLE_SESSION_KEY);
+      showToast('La mesa ya está vacía');
+    }
   };
 
   // Items Management
@@ -741,7 +843,8 @@ export default function App() {
         {/* Top Info and Quick Actions Bar */}
         <TopBar
           dinersCount={diners.length}
-          onReset={handleResetTableSession}
+          itemsCount={items.length}
+          onNewTable={handleNewTable}
           onOpenQr={() => {
             playTapSound();
             setQrModalOpen(true);
@@ -820,6 +923,14 @@ export default function App() {
                 onStepUnits={handleStepUnits}
                 onSetUnits={handleSetUnits}
                 onLoadPreset={handleLoadPreset}
+                onOpenScanner={() => {
+                  playTapSound();
+                  setScannerModalOpen(true);
+                }}
+                onOpenAddItem={() => {
+                  playTapSound();
+                  setAddItemModalOpen(true);
+                }}
               />
             )}
 
@@ -863,6 +974,10 @@ export default function App() {
                 onTogglePaid={handleTogglePaid}
                 onCopyAlias={handleCopyAlias}
                 onShareWhatsApp={handleShareWhatsApp}
+                onOpenScanner={() => {
+                  playTapSound();
+                  setScannerModalOpen(true);
+                }}
               />
             )}
           </div>
