@@ -1,5 +1,5 @@
 import React from 'react';
-import { Receipt, Utensils, QrCode, Lock, Unlock, ShieldAlert, LogOut, ShieldCheck } from 'lucide-react';
+import { Receipt, Utensils, Lock, Unlock, ShieldAlert, LogOut, ShieldCheck } from 'lucide-react';
 import { Diner, COLORS } from '../types';
 
 interface HeaderProps {
@@ -9,7 +9,6 @@ interface HeaderProps {
   isSystemAdmin?: boolean;
   onToggleMode: () => void;
   onOpenUserModal: () => void;
-  onOpenQr: () => void;
   onLogout?: () => void;
   onOpenAdminLicenses?: () => void;
 }
@@ -21,7 +20,6 @@ export const Header: React.FC<HeaderProps> = ({
   isSystemAdmin,
   onToggleMode,
   onOpenUserModal,
-  onOpenQr,
   onLogout,
   onOpenAdminLicenses
 }) => {
@@ -53,14 +51,6 @@ export const Header: React.FC<HeaderProps> = ({
             <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
               <Utensils className="w-3 h-3 text-emerald-400 shrink-0" />
               <span className="truncate max-w-[170px] sm:max-w-[260px]">{restaurantName}</span>
-              <button
-                type="button"
-                onClick={onOpenQr}
-                className="ml-1 text-slate-400 hover:text-emerald-400 transition-colors p-0.5 cursor-pointer"
-                title="Ver QR de la mesa"
-              >
-                <QrCode className="w-3.5 h-3.5 inline" />
-              </button>
             </p>
           </div>
         </div>

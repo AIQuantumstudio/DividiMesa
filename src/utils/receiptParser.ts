@@ -32,17 +32,17 @@ export function parsePriceNumber(rawStr: string): number {
   if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(cleaned)) {
     cleaned = cleaned.replace(/\./g, '').replace(',', '.');
   }
-  // US format with comma for thousands and dot for decimals: e.g. "12,500.00"
-  else if (/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(cleaned)) {
-    cleaned = cleaned.replace(/,/g, '');
-  }
   // Direct comma for decimals without thousand dots: e.g. "12500,00" or "4000,00" or "7400,00"
   else if (/^\d+,\d{1,2}$/.test(cleaned)) {
     cleaned = cleaned.replace(',', '.');
   }
-  // Argentine format with thousand dot and no decimals: e.g. "12.500" or "24.900" or "3.700"
-  else if (/^\d{1,3}\.\d{3}$/.test(cleaned)) {
+  // Argentine format with thousand dots and no decimals: e.g. "12.500", "24.900", "1.500.000"
+  else if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) {
     cleaned = cleaned.replace(/\./g, '');
+  }
+  // US format with comma for thousands and dot for decimals: e.g. "12,500.00"
+  else if (/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(cleaned)) {
+    cleaned = cleaned.replace(/,/g, '');
   }
   // Plain numbers or already standard decimals
   else {
@@ -86,7 +86,7 @@ function isIgnoredLine(line: string): boolean {
  * Regex for sublines that indicate unit price:
  * e.g. "Unit: 2000,00 (21,00)" or "P.Unit: 3700.00" or "x 2500,00" or "Unit 2500,00"
  */
-const SUBLINE_UNIT_REGEX = /^(?:unit(?:ario|\.?)?:?|p\.?\s*unit(?:ario|\.?)?:?|x\s*[$sS§]?)\s*([0-9]+(?:[.,][0-9]+)*)/i;
+const SUBLINE_UNIT_REGEX = /^(?:unit(?:ario|\.?)?:?|p\.?\s*unit(?:ario|\.?)?:?|x\s*[$sS§]?)\s*([0-9]+(?:[.,][0-9]+)*)(?:\s*\(\s*([0-9]+(?:[.,][0-9]+)*)\s*%?\s*\))?/i;
 
 /**
  * Parses receipt OCR text into structured items with independent unit price,
@@ -117,6 +117,13 @@ export function parseReceiptText(text: string): Item[] {
       const parsedUnit = parsePriceNumber(sublineMatch[1]);
       if (parsedUnit > 0) {
         prevItem.price = parsedUnit; // Set exact unit price from ticket
+
+        if (sublineMatch[2]) {
+          const parsedVat = parsePriceNumber(sublineMatch[2]);
+          if (parsedVat > 0) {
+            prevItem.vatPercentage = parsedVat;
+          }
+        }
 
         // Validate math: does cantidad × precio_unitario === importe_linea?
         const expectedTotal = Math.round(prevItem.qty * prevItem.price * 100) / 100;

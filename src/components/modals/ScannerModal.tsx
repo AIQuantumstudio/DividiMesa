@@ -23,7 +23,7 @@ import { money } from '../../utils/format';
 interface ScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onScanSuccess: (items: Item[], mode: 'replace' | 'append') => void;
+  onScanSuccess: (items: Item[], mode: 'replace' | 'append', restaurantName?: string) => void;
 }
 
 type ScanStep = 'camera' | 'processing' | 'review' | 'failed' | 'manual';
@@ -37,6 +37,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const [progress, setProgress] = useState<number>(0);
   const [statusMessage, setStatusMessage] = useState<string>('Analizando...');
   const [extractedItems, setExtractedItems] = useState<Item[]>([]);
+  const [detectedRestaurant, setDetectedRestaurant] = useState<string | null>(null);
   const [rawOcrText, setRawOcrText] = useState<string>('');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
@@ -170,9 +171,41 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   };
 
   /**
-   * Pre-process receipt image for mobile OCR (downscaling + auto-levels contrast)
+   * Prepares a crisp, full-color, properly-scaled image for Gemini multimodal AI.
+   * Preserves natural RGB color fidelity, high resolution (up to 2048px), and sharp font rendering.
    */
-  const preprocessImage = (sourceCanvas: HTMLCanvasElement): HTMLCanvasElement => {
+  const getOptimizedColorImageBase64 = (sourceCanvas: HTMLCanvasElement): string => {
+    let width = sourceCanvas.width;
+    let height = sourceCanvas.height;
+    const MAX_DIM = 2048;
+
+    if (width > MAX_DIM || height > MAX_DIM) {
+      if (width > height) {
+        height = Math.round((height * MAX_DIM) / width);
+        width = MAX_DIM;
+      } else {
+        width = Math.round((width * MAX_DIM) / height);
+        height = MAX_DIM;
+      }
+    }
+
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = width;
+    outputCanvas.height = height;
+    const ctx = outputCanvas.getContext('2d');
+    if (!ctx) return sourceCanvas.toDataURL('image/jpeg', 0.90);
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(sourceCanvas, 0, 0, width, height);
+
+    return outputCanvas.toDataURL('image/jpeg', 0.90);
+  };
+
+  /**
+   * Fallback pre-processor specifically for client-side Tesseract.js (greyscale + contrast boost)
+   */
+  const preprocessImageForTesseract = (sourceCanvas: HTMLCanvasElement): HTMLCanvasElement => {
     let width = sourceCanvas.width;
     let height = sourceCanvas.height;
 
@@ -233,9 +266,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
   /**
    * Hybrid ticket processing pipeline:
-   * 1. Try server-side structured AI extraction (if available via /api/scan-ticket)
-   * 2. Deterministically validate items
-   * 3. Fallback to client-side Tesseract.js with deterministic receiptParser
+   * 1. Try server-side structured AI extraction (via /api/scan-ticket using Gemini 3.8 Flash)
+   * 2. Deterministically validate items, unit prices, line totals, and VAT percentages
+   * 3. Fallback to client-side Tesseract.js with deterministic receiptParser if offline
    */
   const processImageToOCR = async (canvas: HTMLCanvasElement) => {
     stopCamera();
@@ -243,19 +276,18 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     setProgress(15);
     setStatusMessage('Procesando imagen del ticket...');
 
-    const processed = preprocessImage(canvas);
-    const imageBase64 = processed.toDataURL('image/jpeg', 0.85);
+    const colorImageBase64 = getOptimizedColorImageBase64(canvas);
 
-    // Strategy A: Try server-side structured recognition
+    // Strategy A: Try server-side structured recognition with Gemini 3.8 Flash
     try {
-      setStatusMessage('Analizando productos y precios unitarios...');
-      setProgress(35);
+      setStatusMessage('Analizando productos, precios unitarios e IVA en ARS...');
+      setProgress(40);
 
       const response = await fetch('/api/scan-ticket', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64,
+          imageBase64: colorImageBase64,
           mimeType: 'image/jpeg'
         })
       });
@@ -266,12 +298,16 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           setProgress(95);
           setStatusMessage('Validando relación matemática de precios...');
 
+          if (data.restaurantName) {
+            setDetectedRestaurant(data.restaurantName);
+          }
+
           const mapped: Item[] = data.items.map((it: any, idx: number) => {
             const isBeverage = /(vino|cerveza|gaseosa|coca|agua|jarra|champagne|fernet|aperol|trago|botella)/i.test(it.nombre_producto);
             const mode: ItemMode = isBeverage ? 'shared' : 'units';
             const qty = Math.max(1, Math.round(Number(it.cantidad) || 1));
             const unitPrice = Math.round(Number(it.precio_unitario_ars || 0) * 100) / 100;
-            const lineTotal = Math.round(Number(it.importe_linea_ars || qty * unitPrice) * 100) / 100;
+            const lineTotal = Math.round(Number(it.importe_linea_ars || (qty * unitPrice)) * 100) / 100;
 
             const expected = Math.round(qty * unitPrice * 100) / 100;
             const diff = Math.abs(expected - lineTotal);
@@ -283,10 +319,11 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               qty,
               price: unitPrice,
               lineTotal,
+              vatPercentage: typeof it.porcentaje_iva === 'number' ? it.porcentaje_iva : undefined,
               currency: 'ARS',
               confidence: Number(it.confianza_lectura) || 1.0,
               needsReview,
-              reviewReason: it.motivo_revision || (diff > 1 ? `Importe ($${lineTotal}) difiere de Cantidad (${qty}) × P. Unitario ($${unitPrice})` : undefined),
+              reviewReason: it.motivo_revision || (diff > 1 ? `Importe ($${lineTotal.toLocaleString('es-AR')}) difiere de Cantidad (${qty}) × P. Unitario ($${unitPrice.toLocaleString('es-AR')})` : undefined),
               mode,
               shares: {}
             };
@@ -296,22 +333,26 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           setStep('review');
           return;
         }
+      } else {
+        const errorText = await response.text();
+        console.warn('[TicketScanner] Servidor no pudo procesar imagen:', response.status, errorText);
       }
-    } catch {
-      // Server endpoint not available; proceed to local Tesseract
+    } catch (apiErr) {
+      console.warn('[TicketScanner] Endpoint de IA no disponible, pasando a OCR local:', apiErr);
     }
 
     // Strategy B: Fallback to local client-side Tesseract.js OCR
     try {
-      setStatusMessage('Iniciando lector local...');
-      setProgress(40);
+      setStatusMessage('Iniciando lector local de respaldo...');
+      setProgress(50);
 
-      const result = await Tesseract.recognize(processed, 'spa+eng', {
+      const tesseractCanvas = preprocessImageForTesseract(canvas);
+      const result = await Tesseract.recognize(tesseractCanvas, 'spa+eng', {
         logger: m => {
           if (m.status === 'recognizing text') {
-            const pct = Math.round(40 + m.progress * 50);
+            const pct = Math.round(50 + m.progress * 45);
             setProgress(pct);
-            setStatusMessage(`Analizando caracteres: ${Math.round(m.progress * 100)}%`);
+            setStatusMessage(`Analizando caracteres locales: ${Math.round(m.progress * 100)}%`);
           }
         }
       });
@@ -451,7 +492,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
   const handleConfirmItems = (mode: 'replace' | 'append') => {
     if (extractedItems.length === 0) return;
-    onScanSuccess(extractedItems, mode);
+    onScanSuccess(extractedItems, mode, detectedRestaurant || undefined);
     onClose();
   };
 
@@ -650,8 +691,13 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                   <span>{extractedItems.length} productos identificados ({totalUnits} unidades en mesa)</span>
                 </span>
                 <span className="text-xs font-mono font-black text-white block mt-0.5">
-                  Importe total del ticket: <span className="text-emerald-400">{money(totalCalculated)}</span>
+                  Importe total del ticket: <span className="text-emerald-400">{money(totalCalculated, true)}</span>
                 </span>
+                {detectedRestaurant && (
+                  <span className="text-[11px] text-slate-300 block mt-0.5">
+                    Establecimiento: <b className="text-emerald-300">{detectedRestaurant}</b>
+                  </span>
+                )}
               </div>
               <button
                 type="button"
@@ -711,6 +757,18 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                           className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-bold focus:outline-none focus:border-emerald-500"
                           placeholder="Nombre del producto"
                         />
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {typeof it.vatPercentage === 'number' && it.vatPercentage > 0 && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                              IVA {it.vatPercentage}%
+                            </span>
+                          )}
+                          {it.qty === 1 && (
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              (1 unidad: P. Unit = Importe)
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* 2. Cantidad */}

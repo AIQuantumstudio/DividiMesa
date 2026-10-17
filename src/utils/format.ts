@@ -1,7 +1,16 @@
 import { Diner, Item, TableTotals, DinerTotals } from '../types';
 
-export const money = (n: number): string => {
-  return '$' + Math.round(n).toLocaleString('es-AR');
+export const money = (n: number, includeARS: boolean = false): string => {
+  const num = Number(n) || 0;
+  const formatted = num.toLocaleString('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  return `$ ${formatted}${includeARS ? ' ARS' : ''}`;
+};
+
+export const moneyARS = (n: number): string => {
+  return money(n, true);
 };
 
 export const fmtU = (n: number): string => {

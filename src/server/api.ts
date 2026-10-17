@@ -1121,7 +1121,7 @@ apiRouter.post('/scan-ticket', async (req: Request, res: Response) => {
     }
 
     const { GoogleGenAI, Type } = await import('@google/genai');
-    const ai = new GoogleGenAI();
+    const ai = new GoogleGenAI({ apiKey });
 
     const parts: any[] = [];
 
@@ -1136,29 +1136,71 @@ apiRouter.post('/scan-ticket', async (req: Request, res: Response) => {
     }
 
     parts.push({
-      text: `Analizá minuciosamente este ticket de restaurante argentino y extraé cada producto consumido con precisión contable.
-${ocrText ? `Texto OCR preliminar como referencia:\n${ocrText}\n` : ''}
+      text: `Actúa como perito informático contable especializado en tickets gastronómicos de Argentina (controladores fiscales Hasar, Epson, comandas y facturas B/A).
 
-REGLAS OBLIGATORIAS:
-1. Extraé CADA producto con:
-   - nombre_producto: Nombre limpio del plato o bebida (ej: "Bife de chorizo", "Agua mineral", "Papas fritas", "Servicio de mesa").
-   - cantidad: Cantidad numérica (entero >= 1).
+Analizá minuciosamente este ticket y extraé fielmente cada producto consumido, respetando su estructura y datos originales:
+
+MONEDA OBLIGATORIA: PESO ARGENTINO (ARS)
+- Todos los importes están en PESOS ARGENTINOS (ARS). Nunca interpretes los importes como dólares estadounidenses (USD) ni otra moneda.
+- Formato numérico argentino: punto (.) separa miles y coma (,) separa decimales:
+  Ejemplos:
+  "2.000,00" o "2000,00" = 2000 ARS.
+  "3.700,00" o "3700,00" = 3700 ARS.
+  "24.900,00" o "24900,00" = 24900 ARS.
+  "11.000,00" o "11000,00" = 11000 ARS.
+  "2.500,00" o "2500,00" = 2500 ARS.
+  "5.000,00" o "5000,00" = 5000 ARS.
+  "7.400,00" o "7400,00" = 7400 ARS.
+  "4.000,00" o "4000,00" = 4000 ARS.
+  "52.300,00" o "52300,00" = 52300 ARS.
+- No confundas la coma decimal con separador de miles.
+- No elimines ceros que formen parte del importe.
+
+REGLAS DE EXTRACCIÓN Y ASOCIACIÓN ESPACIAL:
+1. Extraé CADA línea de consumo en el orden exacto en que aparece en el comprobante:
+   - nombre_producto: Nombre exacto del producto tal como figura impreso en el ticket (conservando mayúsculas/minúsculas y ortografía del ticket, sin resumir, sin abreviar ni inventar).
+   - cantidad: Cantidad numérica entera (entero >= 1).
    - precio_unitario_ars: Precio unitario individual por cada porción/unidad en pesos argentinos (ARS).
+     * Si el renglón muestra explícitamente el precio unitario en la columna o en una sublínea (ej: "Unit: 2000,00 (21,00)"), conservá exactamente ese valor ($2.000) como precio_unitario_ars.
+     * Si la línea tiene cantidad 1 y solo figura el importe total (ej: 1 Parrilladas Promo $24.900,00), el precio unitario equivale al importe de línea ($24.900).
+     * Para líneas con cantidad > 1 donde no figure precio unitario, calculalo como importe / cantidad.
    - importe_linea_ars: Importe total cobrado en esa línea en pesos argentinos (ARS).
+   - porcentaje_iva: Porcentaje de IVA si figura (ej: 21 o 10.5). En las sublíneas tipo "Unit: 2000,00 (21,00)", el valor entre paréntesis "(21,00)" es el porcentaje de IVA, NO es un precio ni un producto.
    - moneda: "ARS"
-   - confianza_lectura: Número decimal de 0.0 a 1.0 indicando la nitidez de la lectura.
-   - requiere_revision: Booleano true si hay ambigüedad, descuento, promoción o discrepancia.
+   - confianza_lectura: Número decimal de 0.0 a 1.0 según la claridad visual.
+   - requiere_revision: true si hay descuentos, discrepancias matemáticas o ambigüedad; false si es completamente claro.
    - motivo_revision: Explicación breve si requiere revisión.
 
-2. ASOCIACIÓN ESPACIAL DE LÍNEAS:
-   - Si un producto tiene una sublínea indicando "Unit: 1500,00" o "P.Unit" o "x 1500", ese valor ES el precio_unitario_ars del producto anterior.
-   - En ese caso, la línea superior tiene el importe_linea_ars (ej: cantidad 2, importe 3000, sublínea Unit: 1500).
-   - El precio_unitario_ars es $1500 y el importe_linea_ars es $3000.
-   - NO confundas precio unitario con importe de línea.
+2. ASOCIACIÓN DE SUBLÍNEAS:
+   En tickets fiscales argentinos, la descripción, cantidad e importe suelen estar en la primera línea, y el precio unitario e IVA en la sublínea inmediata inferior:
+   Ejemplo del ticket de referencia:
+   Línea: 2 SERVICIO DE MESA 4000,00
+   Sublínea: Unit: 2000,00 (21,00)
+   => Cantidad: 2, Producto: "SERVICIO DE MESA", Precio unitario: 2000, Importe línea: 4000, IVA: 21.
 
-3. FILTRADO:
-   - NO extraigas subtotales, totales generales, IVA, medios de pago (efectivo, tarjeta), mozo, número de mesa, fecha ni horas como productos.
-   - Pero "SERVICIO DE MESA" o "CUBIERTO" SÍ es un producto consumido que debe incluirse si fue cobrado en el ticket.`
+   Línea: 2 AGUA MINERAL 7400,00
+   Sublínea: Unit: 3700,00 (21,00)
+   => Cantidad: 2, Producto: "AGUA MINERAL", Precio unitario: 3700, Importe línea: 7400, IVA: 21.
+
+   Línea: 1 Parrilladas Promo 24900,00
+   => Cantidad: 1, Producto: "Parrilladas Promo", Precio unitario: 24900, Importe línea: 24900.
+
+   Línea: 1 ENSALADA RÚCULA PARMESO 11000,00
+   => Cantidad: 1, Producto: "ENSALADA RÚCULA PARMESO", Precio unitario: 11000, Importe línea: 11000.
+
+   Línea: 2 EMPANADAS DE CARNE 5000,00
+   Sublínea: Unit: 2500,00 (21,00)
+   => Cantidad: 2, Producto: "EMPANADAS DE CARNE", Precio unitario: 2500, Importe línea: 5000, IVA: 21.
+
+   Total de estas cinco líneas = $52.300,00 ARS.
+
+3. LO QUE NUNCA DEBE EXTRAERSE COMO PRODUCTO:
+   - Metadatos del ticket: Nombre del restaurante, CUIT, Ingresos Brutos, IVA Responsable Inscripto, Fecha, Hora, Nro. Ticket, Nro. Mesa, Mozo.
+   - Encabezados de columnas: "Canti", "Unitario", "(% IVA)", "Descripcion", "Importe".
+   - Totales y formas de pago: "TOTAL", "SUBTOTAL", "EFECTIVO", "TARJETA", "PROPINA", "SU VUELTO".
+   - PERO ATENCIÓN: "SERVICIO DE MESA" o "CUBIERTO" SÍ es un producto consumido y DEBE extraerse.
+
+${ocrText ? `Texto OCR preliminar como apoyo complementario:\n${ocrText}\n` : ''}`
     });
 
     const aiResponse = await ai.models.generateContent({
@@ -1178,6 +1220,7 @@ REGLAS OBLIGATORIAS:
                   cantidad: { type: Type.INTEGER },
                   precio_unitario_ars: { type: Type.NUMBER },
                   importe_linea_ars: { type: Type.NUMBER },
+                  porcentaje_iva: { type: Type.NUMBER },
                   moneda: { type: Type.STRING },
                   confianza_lectura: { type: Type.NUMBER },
                   requiere_revision: { type: Type.BOOLEAN },
@@ -1185,7 +1228,9 @@ REGLAS OBLIGATORIAS:
                 },
                 required: ['nombre_producto', 'cantidad', 'precio_unitario_ars', 'importe_linea_ars']
               }
-            }
+            },
+            ticket_total_ars: { type: Type.NUMBER },
+            nombre_establecimiento: { type: Type.STRING }
           },
           required: ['items']
         }
@@ -1218,7 +1263,7 @@ REGLAS OBLIGATORIAS:
 
         let reviewReason = it.motivo_revision;
         if (diff > 1 && !reviewReason) {
-          reviewReason = `El importe ($${lineTotal}) difiere de Cantidad (${qty}) × P. Unitario ($${unitPrice}). Posible promo o descuento.`;
+          reviewReason = `El importe ($${lineTotal.toLocaleString('es-AR')}) difiere de Cantidad (${qty}) × P. Unitario ($${unitPrice.toLocaleString('es-AR')}). Posible promo o descuento.`;
         }
 
         return {
@@ -1226,6 +1271,7 @@ REGLAS OBLIGATORIAS:
           cantidad: qty,
           precio_unitario_ars: unitPrice,
           importe_linea_ars: lineTotal,
+          porcentaje_iva: typeof it.porcentaje_iva === 'number' ? it.porcentaje_iva : undefined,
           moneda: 'ARS',
           confianza_lectura: typeof it.confianza_lectura === 'number' ? Math.max(0, Math.min(1, it.confianza_lectura)) : 1.0,
           requiere_revision: requiresReview,
@@ -1233,7 +1279,12 @@ REGLAS OBLIGATORIAS:
         };
       });
 
-    res.json({ success: true, items: validatedItems });
+    res.json({
+      success: true,
+      items: validatedItems,
+      ticketTotal: typeof parsedJson.ticket_total_ars === 'number' ? parsedJson.ticket_total_ars : undefined,
+      restaurantName: typeof parsedJson.nombre_establecimiento === 'string' ? parsedJson.nombre_establecimiento.trim() : undefined
+    });
   } catch (err: any) {
     console.warn('[TicketScanner] Error processing ticket via AI:', err?.message || err);
     res.status(500).json({ success: false, error: err?.message || 'Error procesando ticket' });

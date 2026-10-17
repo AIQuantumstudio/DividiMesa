@@ -59,6 +59,7 @@ export interface Item {
   mode: ItemMode;
   shares: Record<number, number>; // dinerId -> quantity consumed or 1 for shared
   lineTotal?: number;
+  vatPercentage?: number;
   currency?: 'ARS';
   confidence?: number;
   needsReview?: boolean;

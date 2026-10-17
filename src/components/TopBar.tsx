@@ -1,11 +1,10 @@
 import React from 'react';
-import { RotateCcw, QrCode, Camera } from 'lucide-react';
+import { RotateCcw, Camera } from 'lucide-react';
 
 interface TopBarProps {
   dinersCount: number;
   itemsCount: number;
   onNewTable: () => void;
-  onOpenQr: () => void;
   onOpenScanner: () => void;
 }
 
@@ -13,7 +12,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   dinersCount,
   itemsCount,
   onNewTable,
-  onOpenQr,
   onOpenScanner
 }) => {
   const isTableEmpty = dinersCount === 0 && itemsCount === 0;
@@ -44,17 +42,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
         <button
           type="button"
-          onClick={onOpenQr}
-          className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1.5 rounded-lg border border-slate-700 active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
-          title="Ver código QR de la mesa"
-        >
-          <QrCode className="w-3 h-3 text-emerald-400" />
-          <span>QR</span>
-        </button>
-        <button
-          type="button"
           onClick={onOpenScanner}
-          className="text-[11px] bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black px-2.5 py-1.5 rounded-lg active:scale-95 transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+          className="text-[11px] bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black px-2.5 py-1.5 rounded-lg active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
           title="Escanear ticket"
         >
           <Camera className="w-3.5 h-3.5 stroke-[2.5]" />

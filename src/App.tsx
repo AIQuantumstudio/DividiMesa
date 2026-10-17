@@ -42,7 +42,6 @@ import { SummaryView } from './components/SummaryView';
 import { AdminPanel } from './components/AdminPanel';
 
 import { PinModal } from './components/modals/PinModal';
-import { QrModal } from './components/modals/QrModal';
 import { ScannerModal } from './components/modals/ScannerModal';
 import { AddItemModal } from './components/modals/AddItemModal';
 import { AddDinerModal } from './components/modals/AddDinerModal';
@@ -213,7 +212,6 @@ export default function App() {
   // Modal states
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [pinModalMode, setPinModalMode] = useState<'unlock' | 'create' | 'change'>('unlock');
-  const [qrModalOpen, setQrModalOpen] = useState(false);
   const [scannerModalOpen, setScannerModalOpen] = useState(false);
   const [addItemModalOpen, setAddItemModalOpen] = useState(false);
   const [addDinerModalOpen, setAddDinerModalOpen] = useState(false);
@@ -827,10 +825,6 @@ export default function App() {
           playTapSound();
           setUserSwitchModalOpen(true);
         }}
-        onOpenQr={() => {
-          playTapSound();
-          setQrModalOpen(true);
-        }}
         onLogout={handleLogout}
         onOpenAdminLicenses={() => {
           playTapSound();
@@ -845,10 +839,6 @@ export default function App() {
           dinersCount={diners.length}
           itemsCount={items.length}
           onNewTable={handleNewTable}
-          onOpenQr={() => {
-            playTapSound();
-            setQrModalOpen(true);
-          }}
           onOpenScanner={() => {
             playTapSound();
             setScannerModalOpen(true);
@@ -1029,22 +1019,19 @@ export default function App() {
         onToast={showToast}
       />
 
-      <QrModal
-        isOpen={qrModalOpen}
-        onClose={() => setQrModalOpen(false)}
-        onToast={showToast}
-      />
-
       <ScannerModal
         isOpen={scannerModalOpen}
         onClose={() => setScannerModalOpen(false)}
-        onScanSuccess={(scannedItems, mode) => {
+        onScanSuccess={(scannedItems, mode, detectedRestaurant) => {
+          if (detectedRestaurant && (!restaurantName || restaurantName === 'Mi Restaurante')) {
+            setRestaurantName(detectedRestaurant);
+          }
           if (mode === 'replace') {
             setItems(scannedItems);
           } else {
             setItems(prev => [...prev, ...scannedItems]);
           }
-          showToast(`¡${scannedItems.length} platos escaneados del ticket!`);
+          showToast(`¡${scannedItems.length} productos extraídos del ticket!`);
         }}
       />
 
