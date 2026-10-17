@@ -1105,3 +1105,138 @@ apiRouter.post('/admin/notifications/:id/read', authenticate, requireAdmin, asyn
   }
   res.json({ success: true });
 });
+
+// 11. SMART TICKET SCANNER (Structured Receipt Extraction with Deterministic Validation)
+apiRouter.post('/scan-ticket', async (req: Request, res: Response) => {
+  try {
+    const { imageBase64, mimeType, ocrText } = req.body || {};
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
+
+    if (!apiKey) {
+      return res.status(503).json({ success: false, error: 'Servicio de IA no configurado en el servidor' });
+    }
+
+    if (!imageBase64 && !ocrText) {
+      return res.status(400).json({ success: false, error: 'Se requiere imagen o texto del ticket' });
+    }
+
+    const { GoogleGenAI, Type } = await import('@google/genai');
+    const ai = new GoogleGenAI();
+
+    const parts: any[] = [];
+
+    if (imageBase64) {
+      const cleanBase64 = imageBase64.replace(/^data:[a-zA-Z0-9/+-]+;base64,/, '').trim();
+      parts.push({
+        inlineData: {
+          mimeType: mimeType || 'image/jpeg',
+          data: cleanBase64
+        }
+      });
+    }
+
+    parts.push({
+      text: `Analizá minuciosamente este ticket de restaurante argentino y extraé cada producto consumido con precisión contable.
+${ocrText ? `Texto OCR preliminar como referencia:\n${ocrText}\n` : ''}
+
+REGLAS OBLIGATORIAS:
+1. Extraé CADA producto con:
+   - nombre_producto: Nombre limpio del plato o bebida (ej: "SERVICIO DE MESA", "AGUA MINERAL", "EMPANADAS DE CARNE", "Parrillada Promo", "ENSALADA RUCULA PARMES").
+   - cantidad: Cantidad numérica (entero >= 1).
+   - precio_unitario_ars: Precio unitario individual por cada porción/unidad en pesos argentinos (ARS).
+   - importe_linea_ars: Importe total cobrado en esa línea en pesos argentinos (ARS).
+   - moneda: "ARS"
+   - confianza_lectura: Número decimal de 0.0 a 1.0 indicando la nitidez de la lectura.
+   - requiere_revision: Booleano true si hay ambigüedad, descuento, promoción o discrepancia.
+   - motivo_revision: Explicación breve si requiere revisión.
+
+2. ASOCIACIÓN ESPACIAL DE LÍNEAS:
+   - Si un producto tiene una sublínea indicando "Unit: 2000,00" o "P.Unit" o "x 2000", ese valor ES el precio_unitario_ars del producto anterior.
+   - En ese caso, la línea superior tiene el importe_linea_ars (ej: cantidad 2, importe 4000, sublínea Unit: 2000).
+   - El precio_unitario_ars es $2000 y el importe_linea_ars es $4000.
+   - NO confundas precio unitario con importe de línea.
+
+3. FILTRADO:
+   - NO extraigas subtotales, totales generales, IVA, medios de pago (efectivo, tarjeta), mozo, número de mesa, fecha ni horas como productos.
+   - Pero "SERVICIO DE MESA" o "CUBIERTO" SÍ es un producto consumido que debe incluirse si fue cobrado en el ticket.`
+    });
+
+    const aiResponse = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: [{ role: 'user', parts }],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            items: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  nombre_producto: { type: Type.STRING },
+                  cantidad: { type: Type.INTEGER },
+                  precio_unitario_ars: { type: Type.NUMBER },
+                  importe_linea_ars: { type: Type.NUMBER },
+                  moneda: { type: Type.STRING },
+                  confianza_lectura: { type: Type.NUMBER },
+                  requiere_revision: { type: Type.BOOLEAN },
+                  motivo_revision: { type: Type.STRING }
+                },
+                required: ['nombre_producto', 'cantidad', 'precio_unitario_ars', 'importe_linea_ars']
+              }
+            }
+          },
+          required: ['items']
+        }
+      }
+    });
+
+    const parsedJson = JSON.parse(aiResponse.text || '{"items":[]}');
+    const rawItems: any[] = Array.isArray(parsedJson.items) ? parsedJson.items : [];
+
+    // Deterministic validation of AI results
+    const validatedItems = rawItems
+      .filter(it => it && typeof it.nombre_producto === 'string' && it.nombre_producto.trim().length >= 2)
+      .map(it => {
+        const qty = Math.max(1, Math.round(Number(it.cantidad) || 1));
+        let unitPrice = Math.round(Number(it.precio_unitario_ars || 0) * 100) / 100;
+        let lineTotal = Math.round(Number(it.importe_linea_ars || 0) * 100) / 100;
+
+        // If unitPrice was 0 but lineTotal exists:
+        if (unitPrice <= 0 && lineTotal > 0) {
+          unitPrice = Math.round((lineTotal / qty) * 100) / 100;
+        }
+        // If lineTotal was 0 but unitPrice exists:
+        if (lineTotal <= 0 && unitPrice > 0) {
+          lineTotal = Math.round(qty * unitPrice * 100) / 100;
+        }
+
+        const expectedTotal = Math.round(qty * unitPrice * 100) / 100;
+        const diff = Math.abs(expectedTotal - lineTotal);
+        const requiresReview = Boolean(it.requiere_revision) || diff > 1;
+
+        let reviewReason = it.motivo_revision;
+        if (diff > 1 && !reviewReason) {
+          reviewReason = `El importe ($${lineTotal}) difiere de Cantidad (${qty}) × P. Unitario ($${unitPrice}). Posible promo o descuento.`;
+        }
+
+        return {
+          nombre_producto: it.nombre_producto.trim(),
+          cantidad: qty,
+          precio_unitario_ars: unitPrice,
+          importe_linea_ars: lineTotal,
+          moneda: 'ARS',
+          confianza_lectura: typeof it.confianza_lectura === 'number' ? Math.max(0, Math.min(1, it.confianza_lectura)) : 1.0,
+          requiere_revision: requiresReview,
+          motivo_revision: reviewReason
+        };
+      });
+
+    res.json({ success: true, items: validatedItems });
+  } catch (err: any) {
+    console.warn('[TicketScanner] Error processing ticket via AI:', err?.message || err);
+    res.status(500).json({ success: false, error: err?.message || 'Error procesando ticket' });
+  }
+});
+

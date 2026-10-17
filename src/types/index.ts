@@ -58,6 +58,11 @@ export interface Item {
   qty: number;
   mode: ItemMode;
   shares: Record<number, number>; // dinerId -> quantity consumed or 1 for shared
+  lineTotal?: number;
+  currency?: 'ARS';
+  confidence?: number;
+  needsReview?: boolean;
+  reviewReason?: string;
 }
 
 export interface Preset {

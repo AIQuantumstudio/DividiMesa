@@ -90,7 +90,7 @@ export const TicketView: React.FC<TicketViewProps> = ({
         ) : (
           items.map(it => {
             const isShared = it.mode === 'shared';
-            const total = it.price * it.qty;
+            const total = it.lineTotal ?? (it.price * it.qty);
             const participantsCount = partCount(it);
             const myShare = currentDinerId ? it.shares[currentDinerId] || 0 : 0;
             const asg = assignedUnits(it);

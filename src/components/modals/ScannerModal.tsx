@@ -11,10 +11,12 @@ import {
   AlertCircle,
   Upload,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  HelpCircle,
+  Wand2
 } from 'lucide-react';
 import Tesseract from 'tesseract.js';
-import { Item } from '../../types';
+import { Item, ItemMode } from '../../types';
 import { parseReceiptText } from '../../utils/receiptParser';
 import { money } from '../../utils/format';
 
@@ -81,7 +83,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
     let stream: MediaStream | null = null;
 
-    // Strategy 1: Ideal rear camera (environment) with HD resolution
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -92,14 +93,12 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         audio: false
       });
     } catch {
-      // Strategy 2: Without resolution constraints (for restrictive mobile devices)
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: facingMode },
           audio: false
         });
       } catch {
-        // Strategy 3: Any video device
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: true,
@@ -128,7 +127,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
     streamRef.current = stream;
 
-    // Bind to video element safely for iOS Safari and Android Chrome
     const video = videoRef.current;
     if (video) {
       video.srcObject = stream;
@@ -149,7 +147,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     }
   }, [facingMode, stopCamera]);
 
-  // Lifecycle when modal opens/closes
   useEffect(() => {
     if (isOpen) {
       setStep('camera');
@@ -168,22 +165,17 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     };
   }, [isOpen, startCamera, stopCamera]);
 
-  // Toggle between rear and front camera
   const toggleFacingMode = () => {
     setFacingMode(prev => (prev === 'environment' ? 'user' : 'environment'));
   };
 
   /**
-   * Pre-process receipt image for mobile OCR:
-   * 1. Downscales proportionally if image exceeds 1920px (prevents mobile memory crashes).
-   * 2. Converts to grayscale.
-   * 3. Applies contrast stretching & sharpening to make thermal receipt text crisp against paper.
+   * Pre-process receipt image for mobile OCR (downscaling + auto-levels contrast)
    */
   const preprocessImage = (sourceCanvas: HTMLCanvasElement): HTMLCanvasElement => {
     let width = sourceCanvas.width;
     let height = sourceCanvas.height;
 
-    // Max dimension 1920px for optimal OCR speed & memory safety on mobile
     const MAX_DIM = 1920;
     if (width > MAX_DIM || height > MAX_DIM) {
       if (width > height) {
@@ -201,18 +193,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     const ctx = outputCanvas.getContext('2d');
     if (!ctx) return sourceCanvas;
 
-    // Draw scaled
     ctx.drawImage(sourceCanvas, 0, 0, width, height);
 
     try {
       const imgData = ctx.getImageData(0, 0, width, height);
       const d = imgData.data;
 
-      // Find min and max luminance for adaptive contrast stretching
       let minLum = 255;
       let maxLum = 0;
 
-      // Sample a subset for performance
       const stepSample = Math.max(1, Math.floor(d.length / 40000));
       for (let i = 0; i < d.length; i += 4 * stepSample) {
         const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
@@ -220,20 +209,13 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         if (lum > maxLum) maxLum = lum;
       }
 
-      // Safe bounds
       const lumRange = Math.max(20, maxLum - minLum);
-
-      // Contrast multiplier
-      const contrast = 40;
+      const contrast = 35;
       const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
 
       for (let i = 0; i < d.length; i += 4) {
         const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-
-        // Stretch dynamic range
         const normalized = ((gray - minLum) / lumRange) * 255;
-
-        // Apply contrast
         const adjusted = factor * (normalized - 128) + 128;
         const finalColor = Math.min(255, Math.max(0, adjusted));
 
@@ -250,34 +232,92 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   };
 
   /**
-   * Run OCR using client-side Tesseract.js (100% free, local in browser)
+   * Hybrid ticket processing pipeline:
+   * 1. Try server-side structured AI extraction (if available via /api/scan-ticket)
+   * 2. Deterministically validate items
+   * 3. Fallback to client-side Tesseract.js with deterministic receiptParser
    */
   const processImageToOCR = async (canvas: HTMLCanvasElement) => {
     stopCamera();
     setStep('processing');
-    setProgress(10);
-    setStatusMessage('Procesando ticket...');
+    setProgress(15);
+    setStatusMessage('Procesando imagen del ticket...');
 
+    const processed = preprocessImage(canvas);
+    const imageBase64 = processed.toDataURL('image/jpeg', 0.85);
+
+    // Strategy A: Try server-side structured recognition
     try {
-      const processed = preprocessImage(canvas);
+      setStatusMessage('Analizando productos y precios unitarios...');
+      setProgress(35);
 
-      setStatusMessage('Analizando texto y precios...');
-      setProgress(25);
+      const response = await fetch('/api/scan-ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64,
+          mimeType: 'image/jpeg'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && Array.isArray(data.items) && data.items.length > 0) {
+          setProgress(95);
+          setStatusMessage('Validando relación matemática de precios...');
+
+          const mapped: Item[] = data.items.map((it: any, idx: number) => {
+            const isBeverage = /(vino|cerveza|gaseosa|coca|agua|jarra|champagne|fernet|aperol|trago|botella)/i.test(it.nombre_producto);
+            const mode: ItemMode = isBeverage ? 'shared' : 'units';
+            const qty = Math.max(1, Math.round(Number(it.cantidad) || 1));
+            const unitPrice = Math.round(Number(it.precio_unitario_ars || 0) * 100) / 100;
+            const lineTotal = Math.round(Number(it.importe_linea_ars || qty * unitPrice) * 100) / 100;
+
+            const expected = Math.round(qty * unitPrice * 100) / 100;
+            const diff = Math.abs(expected - lineTotal);
+            const needsReview = Boolean(it.requiere_revision) || diff > 1;
+
+            return {
+              id: Date.now() + idx * 10,
+              name: String(it.nombre_producto || '').trim(),
+              qty,
+              price: unitPrice,
+              lineTotal,
+              currency: 'ARS',
+              confidence: Number(it.confianza_lectura) || 1.0,
+              needsReview,
+              reviewReason: it.motivo_revision || (diff > 1 ? `Importe ($${lineTotal}) difiere de Cantidad (${qty}) × P. Unitario ($${unitPrice})` : undefined),
+              mode,
+              shares: {}
+            };
+          });
+
+          setExtractedItems(mapped);
+          setStep('review');
+          return;
+        }
+      }
+    } catch {
+      // Server endpoint not available; proceed to local Tesseract
+    }
+
+    // Strategy B: Fallback to local client-side Tesseract.js OCR
+    try {
+      setStatusMessage('Iniciando lector local...');
+      setProgress(40);
 
       const result = await Tesseract.recognize(processed, 'spa+eng', {
         logger: m => {
           if (m.status === 'recognizing text') {
-            const pct = Math.round(25 + m.progress * 70);
+            const pct = Math.round(40 + m.progress * 50);
             setProgress(pct);
-            setStatusMessage(`Analizando ticket: ${Math.round(m.progress * 100)}%`);
-          } else if (m.status === 'loading tesseract core') {
-            setStatusMessage('Iniciando lector...');
+            setStatusMessage(`Analizando caracteres: ${Math.round(m.progress * 100)}%`);
           }
         }
       });
 
-      setProgress(98);
-      setStatusMessage('Extrayendo productos...');
+      setProgress(95);
+      setStatusMessage('Extrayendo columnas de productos y precios...');
 
       const text = result.data.text || '';
       setRawOcrText(text);
@@ -288,7 +328,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         setExtractedItems(parsed);
         setStep('review');
       } else {
-        // Clear friendly failure step
         setStep('failed');
       }
     } catch (err: any) {
@@ -297,11 +336,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     }
   };
 
-  // Capture frame from active live video
   const handleCaptureVideo = () => {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
-      // If video is not ready, trigger native camera input as seamless fallback
       nativeCameraInputRef.current?.click();
       return;
     }
@@ -316,7 +353,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     processImageToOCR(canvas);
   };
 
-  // Handle image selected from gallery or native camera file input
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -337,15 +373,49 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
-
-    // Reset input so same file can be reselected if needed
     e.target.value = '';
   };
 
   // Review item actions
   const handleUpdateItem = (id: number, field: keyof Item, value: any) => {
     setExtractedItems(prev =>
-      prev.map(it => (it.id === id ? { ...it, [field]: value } : it))
+      prev.map(it => {
+        if (it.id !== id) return it;
+        const updated = { ...it, [field]: value };
+
+        // Re-evaluate mathematical match when qty, price, or lineTotal changes
+        if (field === 'price' || field === 'qty' || field === 'lineTotal') {
+          const expected = Math.round((updated.qty || 1) * (updated.price || 0) * 100) / 100;
+          const currentTotal = updated.lineTotal ?? expected;
+          const diff = Math.abs(expected - currentTotal);
+
+          if (diff <= 1) {
+            updated.needsReview = false;
+            updated.confidence = 1.0;
+            updated.reviewReason = undefined;
+          } else {
+            updated.needsReview = true;
+            updated.reviewReason = `Importe ($${currentTotal}) difiere de Cantidad (${updated.qty}) × P. Unitario ($${updated.price}). Posible promo o descuento.`;
+          }
+        }
+        return updated;
+      })
+    );
+  };
+
+  const handleSyncLineTotal = (id: number) => {
+    setExtractedItems(prev =>
+      prev.map(it => {
+        if (it.id !== id) return it;
+        const synced = Math.round(it.qty * it.price * 100) / 100;
+        return {
+          ...it,
+          lineTotal: synced,
+          needsReview: false,
+          confidence: 1.0,
+          reviewReason: undefined
+        };
+      })
     );
   };
 
@@ -357,8 +427,12 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     const newItem: Item = {
       id: Date.now(),
       name: 'Nuevo producto',
-      price: 1000,
+      price: 2500,
       qty: 1,
+      lineTotal: 2500,
+      currency: 'ARS',
+      confidence: 1.0,
+      needsReview: false,
       mode: 'units',
       shares: {}
     };
@@ -381,13 +455,14 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     onClose();
   };
 
-  const totalCalculated = extractedItems.reduce((acc, it) => acc + it.price * it.qty, 0);
+  const totalCalculated = extractedItems.reduce((acc, it) => acc + (it.lineTotal ?? it.price * it.qty), 0);
+  const totalUnits = extractedItems.reduce((acc, it) => acc + it.qty, 0);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4">
-      <div className="glass-panel w-full max-w-md rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xl border border-slate-700/80 max-h-[94vh] flex flex-col">
+    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className={`glass-panel w-full ${step === 'review' ? 'max-w-2xl' : 'max-w-md'} rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xl border border-slate-700/80 max-h-[95vh] flex flex-col transition-all duration-300`}>
         {/* Header */}
         <div className="flex justify-between items-center border-b border-slate-800 pb-2.5 shrink-0">
           <div className="flex items-center space-x-2">
@@ -395,13 +470,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               <Camera className="w-4 h-4 stroke-[2.5]" />
             </div>
             <div>
-              <h3 className="font-extrabold text-sm text-slate-100">Escáner de Ticket</h3>
+              <h3 className="font-extrabold text-sm text-slate-100">
+                {step === 'review' ? 'Revisión de Productos del Ticket' : 'Escáner de Ticket'}
+              </h3>
               <p className="text-[11px] text-slate-400">
                 {step === 'camera' && 'Apuntá al ticket con buena luz'}
-                {step === 'processing' && 'Digitalizando con OCR...'}
-                {step === 'review' && `${extractedItems.length} productos identificados`}
+                {step === 'processing' && 'Digitalizando con precisión contable...'}
+                {step === 'review' && `${extractedItems.length} productos identificados • Revisá los precios antes de confirmar`}
                 {step === 'failed' && 'Resultado del escaneo'}
-                {step === 'manual' && 'Revisión de texto'}
+                {step === 'manual' && 'Revisión manual de texto'}
               </p>
             </div>
           </div>
@@ -418,9 +495,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         {/* STEP 1: CAMERA & CAPTURE */}
         {step === 'camera' && (
           <div className="space-y-3 flex-1 flex flex-col overflow-y-auto">
-            {/* Viewfinder area */}
             <div className="relative w-full aspect-[4/3] bg-slate-950 rounded-2xl overflow-hidden border-2 border-dashed border-emerald-500/50 flex flex-col items-center justify-center shadow-inner">
-              {/* Live video */}
               <video
                 ref={videoRef}
                 autoPlay
@@ -431,7 +506,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 }`}
               />
 
-              {/* If camera is active and no error: show laser & viewfinder frame */}
               {isCameraActive && !cameraError && (
                 <>
                   <div className="scanner-laser inset-x-0" />
@@ -442,7 +516,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                     </div>
                     <div className="text-center">
                       <span className="bg-slate-900/85 text-emerald-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-sm border border-emerald-500/30">
-                        Alineá platos y precios
+                        Alineá platos, cantidad y precios
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -451,7 +525,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Switch camera button (front/back) */}
                   <button
                     type="button"
                     onClick={toggleFacingMode}
@@ -463,7 +536,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 </>
               )}
 
-              {/* If camera is loading */}
               {!isCameraActive && !cameraError && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center space-y-2 p-4 text-center">
                   <Loader2 className="w-7 h-7 text-emerald-400 animate-spin" />
@@ -472,7 +544,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 </div>
               )}
 
-              {/* If camera permission denied or unavailable */}
               {cameraError && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center space-y-2.5 bg-slate-950/95">
                   <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
@@ -496,9 +567,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               )}
             </div>
 
-            {/* Actions Bar for Mobile: 2 primary options */}
             <div className="grid grid-cols-2 gap-2 pt-1">
-              {/* Option A: Gallery / Files on Phone */}
               <button
                 type="button"
                 onClick={() => galleryInputRef.current?.click()}
@@ -508,7 +577,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 <span>Subir foto del ticket</span>
               </button>
 
-              {/* Option B: Capture from Viewfinder or Native Camera */}
               <button
                 type="button"
                 onClick={() => {
@@ -529,7 +597,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               💡 Para mejores resultados, apoyá el ticket sobre una mesa con buena luz.
             </p>
 
-            {/* Hidden Input 1: Gallery / Phone Files (NO capture attribute) */}
             <input
               ref={galleryInputRef}
               type="file"
@@ -538,7 +605,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               className="hidden"
             />
 
-            {/* Hidden Input 2: Native Camera direct snap (capture="environment") */}
             <input
               ref={nativeCameraInputRef}
               type="file"
@@ -573,80 +639,181 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           </div>
         )}
 
-        {/* STEP 3: REVIEW EXTRACTED ITEMS */}
+        {/* STEP 3: REVIEW EXTRACTED ITEMS TABLE (EXACT USER SPECIFICATION) */}
         {step === 'review' && (
           <div className="space-y-3 flex-1 flex flex-col overflow-hidden">
-            {/* Success summary badge */}
-            <div className="flex justify-between items-center bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-xl">
+            {/* Summary Banner */}
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-2.5 rounded-xl shrink-0">
               <div>
                 <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Productos encontrados</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{extractedItems.length} productos identificados ({totalUnits} unidades en mesa)</span>
                 </span>
-                <span className="text-[11px] font-mono font-bold text-white block mt-0.5">
-                  Total leído: {money(totalCalculated)}
+                <span className="text-xs font-mono font-black text-white block mt-0.5">
+                  Importe total del ticket: <span className="text-emerald-400">{money(totalCalculated)}</span>
                 </span>
               </div>
               <button
                 type="button"
                 onClick={handleAddNewItem}
-                className="text-[11px] bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold px-2.5 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1 active:scale-95 cursor-pointer"
+                className="text-[11px] bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold px-2.5 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1 active:scale-95 cursor-pointer shadow-sm"
               >
-                <Plus className="w-3 h-3" />
-                <span>+ Agregar plato</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Agregar producto</span>
               </button>
             </div>
 
-            {/* Items list */}
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-60">
-              {extractedItems.map(it => (
-                <div
-                  key={it.id}
-                  className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs"
-                >
-                  <div className="flex-1 space-y-1.5">
-                    <input
-                      type="text"
-                      value={it.name}
-                      onChange={e => handleUpdateItem(it.id, 'name', e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-100 font-bold focus:outline-none focus:border-emerald-500"
-                      placeholder="Nombre del plato"
-                    />
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400 font-bold">$</span>
-                      <input
-                        type="number"
-                        value={it.price}
-                        onChange={e =>
-                          handleUpdateItem(it.id, 'price', parseFloat(e.target.value) || 0)
-                        }
-                        className="w-24 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 font-bold text-emerald-400 focus:outline-none"
-                      />
-                      <span className="text-slate-400">Cant:</span>
-                      <input
-                        type="number"
-                        min="1"
-                        value={it.qty}
-                        onChange={e =>
-                          handleUpdateItem(it.id, 'qty', parseInt(e.target.value) || 1)
-                        }
-                        className="w-12 bg-slate-800 border border-slate-700 rounded px-1 text-center font-bold focus:outline-none"
-                      />
-                      <span className="text-[11px] text-slate-300 ml-auto font-mono font-bold">
-                        {money(it.price * it.qty)}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteItem(it.id)}
-                    className="text-rose-400 hover:text-rose-300 p-1.5 cursor-pointer active:scale-95"
-                    title="Eliminar plato"
+            {/* Instruction Notice */}
+            <div className="text-[11px] text-slate-400 px-1 leading-tight flex items-center gap-1.5 shrink-0">
+              <HelpCircle className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <span>
+                El <b>Precio unitario</b> es el valor asignado por cada porción que consuma un comensal.
+              </span>
+            </div>
+
+            {/* TABLE / CARDS CONTAINER */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[52vh]">
+              {/* Desktop Table Headers */}
+              <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1 bg-slate-900/60 rounded-lg border border-slate-800/80">
+                <span className="col-span-5">Producto</span>
+                <span className="col-span-1 text-center">Cant.</span>
+                <span className="col-span-2 text-right">P. Unitario</span>
+                <span className="col-span-2 text-right">Importe Línea</span>
+                <span className="col-span-2 text-center">Estado</span>
+              </div>
+
+              {extractedItems.map(it => {
+                const calculatedExpected = Math.round(it.qty * it.price * 100) / 100;
+                const actualLine = it.lineTotal ?? calculatedExpected;
+                const hasDiff = Math.abs(calculatedExpected - actualLine) > 1;
+                const isWarning = it.needsReview || hasDiff;
+
+                return (
+                  <div
+                    key={it.id}
+                    className={`bg-slate-900/90 border rounded-xl p-2.5 sm:p-3 transition-all space-y-2 ${
+                      isWarning
+                        ? 'border-amber-500/50 bg-amber-950/10'
+                        : 'border-slate-800 hover:border-slate-700'
+                    }`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+                    {/* Row Inputs */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center text-xs">
+                      {/* 1. Producto */}
+                      <div className="sm:col-span-5">
+                        <label className="sm:hidden text-[10px] font-bold text-slate-400 block mb-0.5">
+                          Producto:
+                        </label>
+                        <input
+                          type="text"
+                          value={it.name}
+                          onChange={e => handleUpdateItem(it.id, 'name', e.target.value)}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-bold focus:outline-none focus:border-emerald-500"
+                          placeholder="Nombre del producto"
+                        />
+                      </div>
+
+                      {/* 2. Cantidad */}
+                      <div className="sm:col-span-1 flex items-center justify-between sm:justify-center">
+                        <label className="sm:hidden text-[10px] font-bold text-slate-400">
+                          Cant:
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="99"
+                          value={it.qty}
+                          onChange={e => handleUpdateItem(it.id, 'qty', parseInt(e.target.value, 10) || 1)}
+                          className="w-14 sm:w-full bg-slate-800 border border-slate-700 rounded-lg px-1.5 py-1.5 text-center font-bold text-slate-100 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      {/* 3. Precio Unitario */}
+                      <div className="sm:col-span-2 flex items-center justify-between sm:justify-end gap-1">
+                        <label className="sm:hidden text-[10px] font-bold text-slate-400">
+                          P. Unitario:
+                        </label>
+                        <div className="flex items-center gap-1 w-28 sm:w-full">
+                          <span className="text-slate-500 font-bold">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            value={it.price}
+                            onChange={e => handleUpdateItem(it.id, 'price', parseFloat(e.target.value) || 0)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 font-bold text-emerald-400 text-right focus:outline-none focus:border-emerald-500"
+                            title="Precio unitario individual"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 4. Importe de Línea */}
+                      <div className="sm:col-span-2 flex items-center justify-between sm:justify-end gap-1">
+                        <label className="sm:hidden text-[10px] font-bold text-slate-400">
+                          Importe Línea:
+                        </label>
+                        <div className="flex items-center gap-1 w-28 sm:w-full">
+                          <span className="text-slate-500 font-bold">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            value={actualLine}
+                            onChange={e => handleUpdateItem(it.id, 'lineTotal', parseFloat(e.target.value) || 0)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 font-bold text-slate-100 text-right focus:outline-none focus:border-emerald-500"
+                            title="Importe total facturado en la línea"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 5. Estado & Delete */}
+                      <div className="sm:col-span-2 flex items-center justify-between sm:justify-center gap-1 pt-1 sm:pt-0">
+                        {isWarning ? (
+                          <span
+                            className="text-[10px] font-bold px-2 py-1 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1"
+                            title={it.reviewReason || 'Discrepancia entre Cant × Unitario y Total'}
+                          >
+                            <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+                            <span>Revisar</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                            <span>Correcto</span>
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteItem(it.id)}
+                          className="text-rose-400 hover:text-rose-300 p-1.5 rounded-lg hover:bg-rose-950/40 cursor-pointer active:scale-95 transition-all"
+                          title="Eliminar producto"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Discrepancy Note & Auto-sync button if applicable */}
+                    {isWarning && (
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-800/80 text-[11px] text-amber-300/90 bg-amber-950/30 -mx-1 px-2.5 py-1.5 rounded-lg">
+                        <span>
+                          {it.reviewReason || `Cant (${it.qty}) × Unit ($${it.price}) = $${calculatedExpected} ≠ Importe $${actualLine}`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleSyncLineTotal(it.id)}
+                          className="text-[10px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold px-2 py-0.5 rounded border border-amber-500/30 flex items-center gap-1 active:scale-95 cursor-pointer ml-auto"
+                          title="Igualar Importe de Línea a Cantidad × Precio Unitario"
+                        >
+                          <Wand2 className="w-2.5 h-2.5" />
+                          <span>Alinear a ${calculatedExpected}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Bottom Actions */}
@@ -658,7 +825,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                   className="w-1/3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold active:scale-95 transition-all flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Reintentar</span>
+                  <span>Volver a escanear</span>
                 </button>
                 <button
                   type="button"
@@ -666,14 +833,14 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                   className="w-2/3 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black rounded-xl text-xs active:scale-95 transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>Cargar {extractedItems.length} platos al ticket</span>
+                  <span>Confirmar {extractedItems.length} productos en Dividí Mesa</span>
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* STEP 4: FAILURE (Non-technical friendly error screen) */}
+        {/* STEP 4: FAILURE */}
         {step === 'failed' && (
           <div className="space-y-4 flex-1 flex flex-col items-center justify-center text-center p-2">
             <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
@@ -685,7 +852,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 No pudimos leer correctamente el ticket.
               </h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Asegurate de que el ticket esté bien iluminado, enfocado y que los precios sean legibles.
+                Asegurate de que el ticket esté bien iluminado, enfocado y que los precios y platos sean legibles.
               </p>
             </div>
 
@@ -719,13 +886,13 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           </div>
         )}
 
-        {/* STEP 5: MANUAL REVIEW (optional fallback if user wants to see raw text or edit manually) */}
+        {/* STEP 5: MANUAL REVIEW */}
         {step === 'manual' && (
           <div className="space-y-3 flex-1 flex flex-col overflow-y-auto">
             <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-xs text-slate-300">
               <p className="font-bold text-slate-100">Texto detectado:</p>
               <p className="text-[11px] text-slate-400">
-                Podés corregir el texto o escribir los platos (ej: 1 Milanesa 12500) y tocar Interpretar platos.
+                Podés corregir o pegar el texto de los platos (ej: 2 Agua Mineral 7400 \n Unit: 3700) y tocar Interpretar platos.
               </p>
             </div>
 
@@ -733,7 +900,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               rows={6}
               value={rawOcrText}
               onChange={e => setRawOcrText(e.target.value)}
-              placeholder="1 Milanesa Napolitana 12500&#10;2 Coca Cola 4000&#10;1 Flan Casero 3500"
+              placeholder="2 AGUA MINERAL 7400,00&#10;Unit: 3700,00&#10;1 Parrillada Promo 24900,00"
               className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-mono text-emerald-400 focus:outline-none focus:border-emerald-500"
             />
 

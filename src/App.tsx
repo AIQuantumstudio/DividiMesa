@@ -182,7 +182,8 @@ export default function App() {
     let un = 0;
 
     items.forEach(it => {
-      sub += it.price * it.qty;
+      const itemTotal = it.lineTotal ?? (it.price * it.qty);
+      sub += itemTotal;
       if (it.mode === 'shared') {
         if (partCount(it) === 0) un++;
       } else {
@@ -214,7 +215,8 @@ export default function App() {
         if (it.mode === 'shared') {
           const count = partCount(it);
           if (count > 0) {
-            sub += (it.price * it.qty) / count;
+            const itemTotal = it.lineTotal ?? (it.price * it.qty);
+            sub += itemTotal / count;
           }
         } else {
           sub += it.price * u;
